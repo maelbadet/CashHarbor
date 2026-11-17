@@ -33,9 +33,9 @@ Les conditions du contrat restent modifiables tant qu’aucun règlement n’a �
 
 Un compte personnel lié à un prêt personnel ou contenant ses remboursements générés ne peut pas être rendu commun, afin de ne pas exposer indirectement le prêt. Un prêt avec des règlements enregistrés ne peut pas être supprimé avant leur annulation.
 
-## Solde net et exports
+## Solde des comptes et exports
 
-Le tableau de bord affiche le **solde net suivi** : soldes des comptes accessibles moins le capital restant des prêts accessibles. Les intérêts futurs et la valeur des biens immobiliers ne sont pas inclus. Il ne s’agit donc pas d’une évaluation du patrimoine immobilier complet.
+Le tableau de bord affiche le **solde des comptes accessibles**, sans déduire le capital restant des prêts, présenté séparément. Une mensualité diminue le solde lorsqu’elle est comptabilisée en dépense ; une confirmation en suivi seul ne crée aucun débit. Le solde provient des données enregistrées, sans connexion bancaire en temps réel.
 
 L’export JSON contient les prêts et règlements accessibles à la personne connectée. Chaque échéancier peut être exporté en CSV, sans rendre un prêt personnel accessible au partenaire. Les graphiques historiques des comptes continuent à montrer les soldes des comptes, sans reconstruire un historique de dette qui n’a pas été saisi.
 

@@ -36,7 +36,7 @@
         }
         @if (request.AccountId == null && currentLoans.Length > 0)
         {
-            <section class="debt-strip panel"><div><span class="eyebrow">SITUATION ACTUELLE · @Today.ToString("dd/MM/yyyy")</span><h2>Comptes et engagements</h2><a href="/prets" class="text-link">Suivre les prêts ↗</a></div><div><small>Soldes des comptes</small><strong>@Euro(currentAssets)</strong></div><div><small>Capital restant dû</small><strong>@Euro(currentDebt)</strong></div><div class="debt-net"><small>Solde net suivi</small><strong>@Euro(currentAssets - currentDebt)</strong></div><p>Situation actuelle de la vue sélectionnée, indépendante de la période historique. Valeur des biens immobiliers et intérêts futurs non inclus.</p></section>
+            <section class="debt-strip accounts-summary panel"><div><span class="eyebrow">SITUATION ACTUELLE · @Today.ToString("dd/MM/yyyy")</span><h2>Solde actuel des comptes</h2><a href="/prets" class="text-link">Suivre les prêts ↗</a></div><div><small>Soldes des comptes</small><strong>@Euro(currentAssets)</strong></div><div><small>Capital restant dû · suivi séparé</small><strong>@Euro(currentDebt)</strong></div><p>Solde calculé depuis vos soldes renseignés et vos opérations enregistrées. Seules les mensualités comptabilisées en dépenses diminuent le solde du compte.</p></section>
         }
         <div class="dashboard-bottom-grid">
             <section class="panel"><div class="section-heading"><div><span class="eyebrow">DANS LA PÉRIODE SÉLECTIONNÉE</span><h2>Dernières opérations</h2></div><a class="text-link" href="/operations?debut=@Iso(request.From)&fin=@Iso(request.To)&compte=@request.AccountId&vue=@AnalyticsFilters.Scope(request.Scope)">Voir tout ↗</a></div>
