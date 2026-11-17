@@ -47,7 +47,7 @@ docker compose run --rm --no-deps app --setup
 
 Le terminal doit être interactif. Les mots de passe sont masqués. Utiliser un mot de passe unique de 14 caractères minimum, conservé dans un gestionnaire. Enregistrer la clé privée TOTP affichée dans une application d’authentification, en mode SHA-1 / 6 chiffres / 30 secondes. Entrer son code pour terminer. La clé n’est affichée qu’au provisionnement ; effacer ensuite l’affichage du terminal. Garder une copie de récupération protégée, indépendante du téléphone.
 
-Deux utilisateurs maximum. Aucune inscription ni récupération par e-mail n’est exposée. Vous partagez tous les comptes, opérations et objectifs. Attendre le prochain code après le provisionnement avant de vous connecter : un code consommé ne peut pas être réutilisé.
+Deux utilisateurs maximum. Aucune inscription ni récupération par e-mail n’est exposée. Chacun dispose de comptes et objectifs personnels ; seuls les éléments choisis communs sont visibles par vous deux. Attendre le prochain code après le provisionnement avant de vous connecter : un code consommé ne peut pas être réutilisé.
 
 En cas de perte du téléphone ou du mot de passe, l’administrateur du VPS peut réinitialiser un accès **existant** :
 
@@ -100,6 +100,6 @@ docker compose build --pull
 docker compose up -d --no-deps app
 ```
 
-Les tags d’image suivent la branche .NET 10 ; épingler les digests après validation si vous avez besoin de reproductibilité stricte. Appliquer aussi les mises à jour de l’hôte, Docker et Tailscale. Une future modification du schéma devra fournir une migration explicite : EnsureCreated initialise uniquement la base v1 et ne constitue pas un mécanisme de migration. Pas de replicas ni de partage du fichier SQLite entre plusieurs serveurs.
+Les tags d’image suivent la branche .NET 10 ; épingler les digests après validation si vous avez besoin de reproductibilité stricte. Appliquer aussi les mises à jour de l’hôte, Docker et Tailscale. Le passage v1 vers v2 conserve les tables, sauvegarde la base et protège les nouvelles règles d’accès. Les anciens comptes doivent être classés : suivre [la procédure de mise à jour](UPGRADE-PRIVATE-ACCOUNTS.md). Toute autre évolution de schéma nécessitera une migration explicite ; EnsureCreated ne fait pas de migration. Pas de replicas ni de partage du fichier SQLite entre plusieurs serveurs.
 
 Le VPS doit avoir des sauvegardes hors site, un pare-feu, SSH par clé et des comptes d’administration maîtrisés. Chiffrer le disque / les sauvegardes protège les copies hors ligne ; un administrateur ou un processus ayant compromis le serveur peut lire les données quand l’application tourne.

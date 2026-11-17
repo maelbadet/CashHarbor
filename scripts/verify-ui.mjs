@@ -40,6 +40,9 @@ try {
       await send('Page.navigate', { url: fixture.origin + route });
       await delay(500);
       for (let i = 0; i < 40; i++) { const r = await send('Runtime.evaluate', { expression: 'document.readyState === "complete"', returnByValue: true }); if (r.result.value) break; await delay(100); }
+      if (route === '/comptes?type=epargne') {
+        await send('Runtime.evaluate', { expression: 'document.querySelector(".account-card details").open = true' });
+      }
       const result = await send('Runtime.evaluate', { expression: 'JSON.stringify({width:innerWidth,scroll:document.documentElement.scrollWidth,h1:document.querySelector("h1")?.textContent,cream:getComputedStyle(document.documentElement).getPropertyValue("--accent").trim(),styles:[...document.querySelectorAll("link")].map(x=>x.href)})', returnByValue: true });
       const state = JSON.parse(result.result.value);
       if (state.scroll > state.width + 1) throw new Error(`Horizontal overflow at ${route} / ${width}: ${JSON.stringify(state)}`);

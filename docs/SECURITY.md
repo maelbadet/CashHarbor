@@ -1,6 +1,6 @@
 # Sécurité de cette version
 
-Périmètre : application privée à une instance, deux utilisateurs de confiance partageant le même foyer, accès réseau privé HTTPS. Pas de données bancaires d’authentification, pas de connexion à une banque, pas de paiement et pas de service public multi-foyers.
+Périmètre : application privée à une instance, deux utilisateurs d’un même foyer disposant de données personnelles et communes, accès réseau privé HTTPS. Pas de données bancaires d’authentification, pas de connexion à une banque, pas de paiement et pas de service public multi-foyers.
 
 ## Contrôles implémentés
 
@@ -22,13 +22,15 @@ Périmètre : application privée à une instance, deux utilisateurs de confianc
 
 Le chiffrement protège une base copiée sans les clés. Le certificat et sa phrase secrète résident sur l’hôte pour permettre un redémarrage automatique ; il ne protège pas d’un administrateur malveillant ou d’un serveur compromis. Le mode Development n’impose pas la protection des clés par certificat : ne pas y saisir vos vraies données.
 
-Ce n’est pas une séparation entre conjoints : chacun peut voir, exporter, modifier ou supprimer toutes les données financières et consulter le journal du foyer. Les objectifs sont déclaratifs et ne réservent pas de solde réel. Les calculs dépendent de saisies exactes et complètes.
+Les comptes personnels sont accessibles uniquement à leur titulaire ; les comptes communs sont accessibles aux deux utilisateurs. Le stockage renvoie un périmètre filtré et ne fusionne que ce périmètre lors des écritures, en conservant les données cachées. Les opérations, échéances, relevés, objectifs, graphiques et exports suivent ces droits. Le journal web est limité aux événements de l’utilisateur connecté. Les comptes communs ne peuvent pas être rendus privés depuis l’interface ; partager un compte privé nécessite la confirmation du titulaire. Les objectifs sont déclaratifs et ne réservent pas de solde réel. Les calculs dépendent de saisies exactes et complètes.
 
 La limite des mots de passe et le verrouillage persistent en base. Les limites de débit par IP sont en mémoire et se réinitialisent au redémarrage. Une déconnexion sur un appareil déconnecte toutes les sessions du même utilisateur. Pas de récupération publique ni de codes de secours à usage unique ; la récupération passe par l’administrateur du VPS.
 
 L’application n’a pas fait l’objet d’un audit externe ni d’un pentest indépendant. Les tests automatisés ne prouvent pas l’absence de vulnérabilité. Il reste à vérifier le réseau, le TLS et la restauration sur votre infrastructure avant d’y importer des données réelles. Les scans de dépendances, sauvegardes planifiées et supervision ne s’exécutent pas automatiquement.
 
 ## Vérifications utiles
+
+Le marqueur SQLite v2 empêche le démarrage d’une ancienne image v1 qui ignorerait les droits. Les comptes et objectifs v1 sans visibilité sont masqués jusqu’au classement administratif avec `--classify-accounts`. Le changement de version et le classement créent des sauvegardes préalables dans `/data/backups`. Ces commandes nécessitent un accès au terminal du serveur, application web arrêtée. L’administrateur du serveur reste capable de déchiffrer les données : il ne s’agit pas d’un chiffrement de bout en bout entre utilisateurs.
 
 ```text
 dotnet build CashHarbor.client

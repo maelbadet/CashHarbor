@@ -12,16 +12,16 @@ CashHarbor.api reste un adaptateur réservé et n’est pas inclus dans l’imag
 
 ## Choix par rapport au diagramme
 
-- Un seul Workspace commun, deux identités locales ; les adhésions et rôles ne sont pas nécessaires pour cette version. Une évolution multi-foyers exigerait de modifier tous les ports pour imposer un périmètre d’accès.
+- Une enveloppe Workspace chiffrée pour le foyer, deux identités locales. Chaque compte et objectif porte une visibilité Personal / Joint et un OwnerId pour les éléments personnels. WorkspaceAccess filtre les lectures puis fusionne uniquement les écritures autorisées, sans exposer les données cachées à Application. Une évolution multi-foyers exigerait de modifier tous les ports pour imposer un périmètre supplémentaire.
 - Établissement libre sur chaque compte, trois types de comptes, EUR uniquement. Le catalogue FinancialProduct, les taux InterestRate et règles fiscales ne sont pas encore implémentés.
 - Catégories prédéfinies dans l’interface, sans hiérarchie. Les ports métier acceptent un libellé de catégorie validé.
-- BalanceSnapshot est une valeur de domaine disponible, mais les graphiques de cette version montrent les flux mensuels. Pas de cours de marché ni de valorisation automatique d’investissement.
+- BalanceSnapshot enregistre les soldes constatés datés. Des écritures Adjustment, exclues des revenus et dépenses, réconcilient ces soldes. Les graphiques montrent les flux et les soldes historiques personnels / communs visibles. Pas de cours de marché ni de valorisation bancaire automatique.
 - Les objectifs enregistrent un montant déclaré, sans déplacer ni réserver de fonds. GoalAccount et les allocations entre objectifs ne sont pas implémentés.
 - Les récurrences sont mensuelles et comptabilisées explicitement. Pas d’ordre bancaire, pas d’arrière-plan effectuant un débit et pas de calcul d’intérêts.
 - La réserve de précaution est un indicateur explicable, pas un moteur de recommandation de placement ni un conseil financier personnalisé.
 
 ## Évolution du stockage
 
-Le schéma v1 est initialisé avec EnsureCreated et marqué PRAGMA user_version=1. La prochaine évolution doit fournir un outil de migration versionné et testé sur une copie de sauvegarde ; EnsureCreated ne fait pas de migration. Le format chiffré porte le purpose CashHarbor.Workspace.v1 : ne pas le modifier sans prise en charge des enveloppes existantes et conservation des anciennes clés.
+Les tables sont initialisées avec EnsureCreated et marquées PRAGMA user_version=2. La transition depuis v1 crée une sauvegarde et interdit aux images v1 de rouvrir des données privées. Le classement administratif affecte explicitement les comptes et objectifs historiques à leur titulaire ou au foyer. Les prochaines évolutions de tables devront fournir des migrations explicites ; EnsureCreated ne fait pas de migration. Le format chiffré conserve le purpose CashHarbor.Workspace.v1 pour relire les enveloppes existantes et leurs anciennes clés.
 
 Une seule instance à la fois. La sérialisation en mémoire n’est pas un verrou distribué ; le jeton de concurrence réduit les pertes silencieuses sans permettre un déploiement multi-instance. Les commandes de provisionnement et récupération se lancent service arrêté.

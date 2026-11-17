@@ -1,19 +1,19 @@
 # CashHarbor
 
-Application privée .NET 10 pour un foyer de deux personnes. Interface française responsive reprenant la palette CWC : crème #f7f3ee, noir #111111, orange #f97316 et Segoe UI / Inter / sans-serif.
+Application privée .NET 10 pour un foyer de deux personnes. Interface française responsive dans le thème demandé : noir #101010, panneaux #1a1a1a, rouge #ef4444 et Segoe UI / Inter / sans-serif.
 
 ## Fonctionnalités
 
 - Deux utilisateurs provisionnés en terminal, sans inscription publique.
 - Mot de passe + TOTP obligatoire, verrouillage après 5 échecs, session de 30 minutes, révocation serveur à la déconnexion.
-- Comptes courants, épargne et investissements, soldes initiaux et opérations en euros.
+- Comptes courants, épargne et investissements personnels ou communs, soldes initiaux et opérations en euros.
 - Dépenses, revenus, virements internes atomiques ; recherche, filtres et pagination.
-- Tableau de bord, graphique sur six mois, répartition des dépenses et objectifs déclaratifs.
+- Tableau de bord, évolution des soldes sur six mois, relevés de valorisation, flux mensuels, répartition des dépenses et objectifs personnels ou communs.
 - Échéances mensuelles comptabilisées sur confirmation, sans doublon à la relance.
 - Réserve de précaution paramétrable, exports CSV et JSON, journal d’activité.
 - Données financières chiffrées par ASP.NET Core Data Protection dans SQLite. En production, clés protégées par certificat obligatoire.
 
-Aucune connexion bancaire, aucun identifiant bancaire, aucune collecte de télémétrie, aucune ressource externe dans l’interface. Les deux utilisateurs partagent toutes les données du foyer. Les produits réglementés, taux d’intérêt historiques, catégories hiérarchiques et recommandations du diagramme complet ne sont pas encore implémentés.
+Aucune connexion bancaire, aucun identifiant bancaire, aucune collecte de télémétrie, aucune ressource externe dans l’interface. Chacun voit ses comptes et objectifs personnels ainsi que les éléments communs. Les opérations, graphiques et exports suivent ces droits ; les données privées du partenaire sont exclues côté serveur. Les produits peuvent être nommés librement, mais les règles réglementaires, taux d’intérêt historiques, catégories hiérarchiques et recommandations du diagramme complet ne sont pas encore implémentés.
 
 ## Architecture
 
@@ -27,6 +27,10 @@ Le stockage reste local au conteneur de l’application : SQLite écrit dans `/d
 - **api** : adaptateur réservé, sans API financière. Ne pas le démarrer pour utiliser l’application.
 
 Les dépendances pointent vers le métier : Domain ← Application ← Infra. L’hôte assemble les adaptateurs ; les pages appellent Application. Un seul processus, une seule instance et un espace partagé : pas de microservices.
+
+## Mise à jour d’une installation existante
+
+Suivre [la reprise des comptes personnels et communs](docs/UPGRADE-PRIVATE-ACCOUNTS.md). Les données anciennes sans titulaire restent masquées jusqu’au classement explicite en terminal. La mise à jour conserve les données, les accès, les clés et les volumes.
 
 ## Démarrage local Windows
 
@@ -63,7 +67,7 @@ $env:CASHHARBOR_BROWSER='C:/Program Files/Google/Chrome/Application/chrome.exe'
 dotnet run --project CashHarbor.Tests
 ```
 
-Un profil Chrome temporaire isolé vérifie les sept pages à 390 et 1 440 px, l’application réelle des styles et l’absence de débordement horizontal global. Les captures sont rangées avec les fixtures. Voir [les vérifications de livraison](docs/VALIDATION.md).
+Un profil Chrome temporaire isolé vérifie les pages et les vues personnelles, communes et épargne à 390 et 1 440 px, l’application réelle du thème rouge et noir et l’absence de débordement horizontal global. Les captures sont rangées avec les fixtures. Voir [les vérifications de livraison](docs/VALIDATION.md).
 
 ## VPS Linux
 
