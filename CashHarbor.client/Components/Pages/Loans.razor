@@ -1,0 +1,22 @@
+@page "/prets"
+@attribute [Authorize]
+@inherits FinancePage
+<PageTitle>Prêts et crédits · CashHarbor</PageTitle>
+<header class="page-header"><div><span class="eyebrow">COMPRENDRE VOS ENGAGEMENTS</span><h1>Vos prêts, en clair<span class="accent">.</span></h1><p>Capital, taux, intérêts et assurance. Vos prêts personnels restent privés ; les prêts communs sont visibles par vous deux.</p></div><a class="button" href="#ajouter">Ajouter un prêt ↗</a></header>
+<Notice />
+@if (W != null)
+{
+    var debt = W.Loans.Sum(l => LoanCalculator.Remaining(l, W.LoanPayments));
+    var nextPayments = W.Loans.Select(l => { var rows = LoanCalculator.Schedule(l); var paid = LoanCalculator.PaidCount(l, W.LoanPayments); return paid < rows.Count ? rows[paid].TotalCents : 0; }).Sum();
+    <section class="stats loan-stats"><article class="stat dark"><span>Capital restant dû</span><strong>@Euro(debt)</strong><small>Selon les règlements confirmés ou déclarés</small></article><article class="stat"><span>Prochaines mensualités cumulées</span><strong>@Euro(nextPayments)</strong><small>Une prochaine échéance par prêt, assurance incluse</small></article><article class="stat"><span>Prêts suivis</span><strong>@W.Loans.Count</strong><small>Personnels accessibles et communs</small></article></section>
+    <div class="account-grid">
+    @foreach (var loan in W.Loans)
+    {
+        var rows = LoanCalculator.Schedule(loan); var paid = LoanCalculator.PaidCount(loan, W.LoanPayments); var remaining = LoanCalculator.Remaining(loan, W.LoanPayments); var next = paid < rows.Count ? rows[paid] : null;
+        <article class="panel loan-card"><div class="row-between"><span class="tag">@LoanForm.LoanLabel(loan.Kind)</span><span class="tag">@(remaining == 0 ? "Soldé" : "En cours")</span></div><h2>@loan.Name</h2><p class="muted">@loan.Lender</p><span class="tag visibility-tag">@Visibility(loan.Visibility)</span><strong class="account-balance">@Euro(remaining)</strong><small>restant sur @Euro(loan.PrincipalCents)</small><meter min="0" max="@loan.PrincipalCents" value="@(loan.PrincipalCents - remaining)" aria-label="Capital remboursé de @loan.Name"></meter>
+        <dl class="loan-facts"><div><dt>Taux nominal fixe</dt><dd>@LoanForm.Rate(loan.AnnualNominalRate) %</dd></div><div><dt>Échéances réglées</dt><dd>@paid / @rows.Count</dd></div>@if (next != null) { <div><dt>Prochaine mensualité</dt><dd>@Euro(next.TotalCents)</dd></div><div><dt>Date prévue</dt><dd>@next.DueDate.ToString("dd/MM/yyyy")</dd></div> }</dl><a class="button secondary" href="/prets/@loan.Id">Suivi et amortissement ↗</a></article>
+    }
+    @if (W.Loans.Count == 0) { <section class="panel empty"><span class="empty-symbol">◷</span><h2>Aucun prêt suivi.</h2><p>Ajoutez un prêt immobilier, auto ou personnel, même déjà en cours.</p></section> }
+    </div>
+    <section class="panel form-panel" id="ajouter"><span class="eyebrow">UN CONTRAT, UN SUIVI</span><h2>Ajouter un prêt à taux fixe</h2><p class="muted">Prêt amortissable à mensualités régulières, hors différé, taux variable, remboursement anticipé et pénalités. L’échéancier est estimatif, avec arrondis au centime et dernière échéance ajustée : comparez-le à celui de votre banque.</p><LoanForm Accounts="W.Accounts" Today="Today" /><p class="fine">Le taux nominal sert à calculer les intérêts. Le TAEG inclut aussi les frais et certaines assurances : <a href="https://www.service-public.gouv.fr/particuliers/vosdroits/F2456" target="_blank" rel="noopener noreferrer">comprendre le TAEG</a>.</p></section>
+}

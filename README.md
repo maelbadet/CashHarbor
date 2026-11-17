@@ -9,8 +9,9 @@ Application privée .NET 10 pour un foyer de deux personnes. Interface français
 - Comptes courants, épargne et investissements personnels ou communs, soldes initiaux et opérations en euros.
 - Dépenses, revenus, virements internes atomiques ; recherche, filtres et pagination.
 - Tableau de bord, évolution des soldes sur six mois, relevés de valorisation, flux mensuels, répartition des dépenses et objectifs personnels ou communs.
-- Échéances mensuelles comptabilisées sur confirmation, sans doublon à la relance.
+- Échéances mensuelles ou annuelles, modifiables et comptabilisées sur confirmation, sans doublon à la relance. Les dépenses annuelles essentielles sont mensualisées uniquement pour l’indicateur de réserve.
 - Réserve de précaution paramétrable, exports CSV et JSON, journal d’activité.
+- Prêts personnels ou communs à taux fixe : taux nominal, TAEG informatif, trois modes d’assurance, frais, échéancier exportable, reprise des mensualités déjà payées et confirmation sans double débit. Le solde net déduit le capital restant dû des comptes suivis.
 - Données financières chiffrées par ASP.NET Core Data Protection dans SQLite. En production, clés protégées par certificat obligatoire.
 
 Aucune connexion bancaire, aucun identifiant bancaire, aucune collecte de télémétrie, aucune ressource externe dans l’interface. Chacun voit ses comptes et objectifs personnels ainsi que les éléments communs. Les opérations, graphiques et exports suivent ces droits ; les données privées du partenaire sont exclues côté serveur. Les produits peuvent être nommés librement, mais les règles réglementaires, taux d’intérêt historiques, catégories hiérarchiques et recommandations du diagramme complet ne sont pas encore implémentés.
@@ -31,6 +32,10 @@ Les dépendances pointent vers le métier : Domain ← Application ← Infra. L�
 ## Mise à jour d’une installation existante
 
 Suivre [la reprise des comptes personnels et communs](docs/UPGRADE-PRIVATE-ACCOUNTS.md). Les données anciennes sans titulaire restent masquées jusqu’au classement explicite en terminal. La mise à jour conserve les données, les accès, les clés et les volumes.
+
+Pour les prêts, suivre [le guide du suivi des crédits](docs/LOANS.md). Le passage automatique v2 vers v3 sauvegarde la base avant modification du marqueur de compatibilité ; les prêts existants restent vides jusqu’à leur saisie.
+
+La version courante **v4** ajoute les [récurrences annuelles](docs/RECURRENCES.md) et conserve les récurrences existantes en mensuel. Le passage depuis v3 sauvegarde automatiquement la base avant de bloquer les anciennes images qui ignorent la fréquence annuelle.
 
 ## Démarrage local Windows
 

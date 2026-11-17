@@ -1,15 +1,29 @@
-@page "/echeances"
+﻿@page "/echeances"
 @attribute [Authorize]
 @inherits FinancePage
 <PageTitle>Échéances · CashHarbor</PageTitle>
-<header class="page-header"><div><span class="eyebrow">PRENDRE UNE LONGUEUR D’AVANCE</span><h1>Les rendez-vous du budget<span class="accent">.</span></h1><p>Vos revenus et dépenses qui reviennent chaque mois.</p></div></header>
+<header class="page-header"><div><span class="eyebrow">PRENDRE UNE LONGUEUR D’AVANCE</span><h1>Les rendez-vous du budget<span class="accent">.</span></h1><p>Vos revenus et dépenses récurrents, chaque mois ou une fois par an.</p></div></header>
 <Notice />
 @if (W != null)
 {
     var due = W.Recurrences.Count(r => r.Active && r.NextDate <= Today);
-    <section class="panel section-heading"><div><h2>@due récurrence(s) à comptabiliser</h2><p class="muted">Vérifiez vos comptes avant de confirmer. Toutes les mensualités échues seront enregistrées, une seule fois.</p></div><form method="post" action="/actions/recurrence-book"><AntiforgeryToken /><button disabled="@(due == 0)">Comptabiliser les échéances</button></form></section>
-    <section class="panel"><div class="table-scroll"><table><thead><tr><th>Prochaine date</th><th>Libellé</th><th>Compte</th><th>Montant mensuel</th><th>Action</th></tr></thead><tbody>@foreach (var r in W.Recurrences.OrderBy(r => r.NextDate)) { <tr><td>@r.NextDate.ToString("dd/MM/yyyy")</td><td><strong>@r.Label</strong><small>@r.Category @(r.Essential ? "· Essentiel" : "")</small></td><td>@W.Accounts.Single(a => a.Id == r.AccountId).Name</td><td class="nowrap">@Euro(r.Cents)</td><td><details><summary>Arrêter</summary><p>Les opérations déjà comptabilisées sont conservées.</p><form method="post" action="/actions/recurrence-delete"><AntiforgeryToken /><input type="hidden" name="id" value="@r.Id" /><button class="danger small-button">Confirmer</button></form></details></td></tr> } @if (W.Recurrences.Count == 0) { <tr><td colspan="5" class="empty">Aucune échéance. Ajoutez un loyer, un abonnement ou un salaire.</td></tr> }</tbody></table></div></section>
-    <section class="panel form-panel"><span class="eyebrow">ANTICIPER LE MOIS</span><h2>Ajouter une récurrence mensuelle</h2>
+    @if (W.Loans.Count > 0)
+    {
+        <section class="panel"><div class="section-heading"><div><span class="eyebrow">REMBOURSEMENTS DE CRÉDIT</span><h2>Prochaines échéances de vos prêts</h2></div><a href="/prets">Gérer les prêts ↗</a></div><p class="fine">Ces mensualités se confirment depuis le prêt. Si une récurrence bancaire les comptabilise déjà, choisissez le suivi du prêt sans créer une seconde dépense.</p><div class="table-scroll"><table><thead><tr><th>Prêt</th><th>Visibilité</th><th>Date prévue</th><th>Montant avec assurance</th><th>Action</th></tr></thead><tbody>@foreach (var loan in W.Loans) { var schedule = LoanCalculator.Schedule(loan); var paid = LoanCalculator.PaidCount(loan, W.LoanPayments); if (paid >= schedule.Count) { continue; } var next = schedule[paid]; <tr><td>@loan.Name</td><td>@Visibility(loan.Visibility)</td><td>@next.DueDate.ToString("dd/MM/yyyy")</td><td>@Euro(next.TotalCents)</td><td><a href="/prets/@loan.Id">Vérifier et confirmer</a></td></tr> }</tbody></table></div></section>
+    }
+    <section class="panel section-heading"><div><h2>@due récurrence(s) à comptabiliser</h2><p class="muted">Vérifiez vos comptes avant de confirmer. Toutes les échéances mensuelles et annuelles arrivées à terme seront enregistrées une seule fois, à leur montant complet.</p></div><form method="post" action="/actions/recurrence-book"><AntiforgeryToken /><button disabled="@(due == 0)">Comptabiliser les échéances</button></form></section>
+    <section class="panel"><div class="table-scroll"><table><thead><tr><th>Prochaine date</th><th>Libellé</th><th>Compte</th><th>Fréquence</th><th>Montant par échéance</th><th>Action</th></tr></thead><tbody>
+    @foreach (var r in W.Recurrences.OrderBy(r => r.NextDate))
+    {
+        <tr><td class="nowrap">@r.NextDate.ToString("dd/MM/yyyy")</td><td><strong>@r.Label</strong><small>@r.Category @(r.Essential ? "· Essentiel" : "")</small></td><td>@W.Accounts.Single(a => a.Id == r.AccountId).Name</td><td><span class="tag">@(r.Frequency == RecurrenceFrequency.Yearly ? "Annuelle" : "Mensuelle")</span></td><td class="nowrap">@Euro(r.Cents)</td><td>
+            <details><summary>Modifier</summary><p>Le compte reste identique. Les opérations déjà comptabilisées sont conservées ; seuls les prochains passages changent.</p><RecurrenceForm Value="r" Today="Today" /></details>
+            <details class="danger-zone"><summary>Arrêter</summary><p>Les opérations déjà comptabilisées sont conservées.</p><form method="post" action="/actions/recurrence-delete"><AntiforgeryToken /><input type="hidden" name="id" value="@r.Id" /><button class="danger small-button">Confirmer</button></form></details>
+        </td></tr>
+    }
+    @if (W.Recurrences.Count == 0) { <tr><td colspan="6" class="empty">Aucune échéance. Ajoutez un loyer mensuel, une facture d’eau annuelle ou un salaire.</td></tr> }
+    </tbody></table></div></section>
+    <section class="panel form-panel"><span class="eyebrow">ANTICIPER LES PROCHAINS PAIEMENTS</span><h2>Ajouter une récurrence</h2>
     @if (W.Accounts.Count == 0) { <p>Ajoutez d’abord <a href="/comptes">un compte</a>.</p> }
-    else { <form class="form-grid" method="post" action="/actions/recurrence-add"><AntiforgeryToken /><label>Libellé<input name="label" maxlength="100" required /></label><label>Compte<select name="account">@foreach (var a in W.Accounts) { <option value="@a.Id">@a.Name</option> }</select></label><label>Montant signé (€)<input name="amount" type="number" min="-100000000" max="100000000" step="0.01" required /><small>Négatif pour une dépense, positif pour un revenu.</small></label><label>Catégorie<select name="category"><CategoryOptions /></select></label><label>Première date<input name="next" type="date" value="@Iso(Today)" max="@Iso(Today.AddYears(5))" required /><small>Le jour choisi est conservé, ou le dernier jour des mois plus courts.</small></label><label class="checkbox"><input name="essential" type="checkbox" /> Dépense essentielle</label><div class="form-actions"><button>Ajouter cette échéance ↗</button></div></form> }</section>
+    else { <RecurrenceForm Accounts="W.Accounts" Today="Today" /> }
+    </section>
 }

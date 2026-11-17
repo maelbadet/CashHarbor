@@ -5,7 +5,7 @@ Vérifications effectuées le 17 novembre 2026, avec des données exclusivement 
 | Vérification | Résultat |
 | --- | --- |
 | Construction de la solution .NET 10 | Réussite, zéro avertissement et zéro erreur |
-| Suites exécutables métier / stockage / HTTP | 17 sur 17 |
+| Suites exécutables métier / stockage / HTTP | 30 sur 30 |
 | Vecteurs officiels RFC 6238 | Six vecteurs SHA-1 vérifiés |
 | Précision des montants et dates limites | Validées |
 | Virements atomiques et suppression des deux écritures | Validés |
@@ -15,7 +15,7 @@ Vérifications effectuées le 17 novembre 2026, avec des données exclusivement 
 | TOTP obligatoire, refus des replays, verrouillage persistant, plafond de deux accès | Validés |
 | Serveur HTTPS réel : pages et exports protégés, CSRF, cookie, hôte, révocation à la déconnexion | Validés |
 | CSS et icône accessibles sur l’hôte réel | Validés |
-| Chrome isolé : pages et vues personnelles, communes et épargne, 390 et 1 440 px | 20 parcours validés, thème rouge et noir appliqué, aucun débordement horizontal global, relevés de solde dépliés dans la vue épargne |
+| Chrome isolé : comptes, épargne, prêts personnels et communs, détails et autres pages, 390 et 1 440 px | 26 parcours validés, thème rouge et noir appliqué, aucun débordement horizontal global, relevés de solde dépliés dans la vue épargne |
 | Captures du tableau de bord mobile et ordinateur | Inspectées visuellement |
 | NuGet : dépendances directes et transitives vulnérables connues | Aucune signalée par les sources consultées |
 | Configuration Docker Compose | Valide avec origine HTTPS de test |
@@ -26,6 +26,15 @@ Vérifications effectuées le 17 novembre 2026, avec des données exclusivement 
 | Relevés et valorisations | Centimes exacts, remplacement à date identique, réconciliation après ajout rétroactif, aucun revenu artificiel |
 | Reprise d’une enveloppe JSON au format v1 | Masquage avant classement, propriétaires explicites, sauvegarde préalable, soldes et opérations conservés, relance sans effet |
 | Marqueur SQLite v2 | Anciennes images v1 bloquées pour empêcher le contournement des nouveaux droits |
+| Prêts à taux fixe | Formule de mensualité comparée à une référence indépendante, capital conservé au centime, dernier solde nul, cas à taux zéro et jours de fin de mois |
+| Assurance et TAEG | Trois modes testés, base de capital correcte, TAEG informatif exclu du taux nominal d’amortissement |
+| Règlements et reprise de prêts | Débit facultatif atomique, annulation rétablie, double soumission et doublon de dépense refusés, mensualités déjà réglées sans création d’anciens débits ; solde net réduit uniquement des intérêts et de l’assurance lors d’un remboursement, sans double comptage du capital |
+| Confidentialité des prêts | Contrats, règlements, détails et CSV personnels cachés au partenaire ; comptes de visibilité incompatible et identifiants forgés refusés |
+| Marqueur SQLite v3 | Sauvegarde et conservation exacte de l’enveloppe lors du passage v2 vers v3 ; anciennes images v2 bloquées |
+| Récurrences annuelles | Paiement complet une fois par an, rattrapage sans doublon, retour au 29 février après les années non bissextiles |
+| Édition des récurrences | Fréquence et montant modifiables, historique préservé, jour d’ancrage inchangé lors d’une simple correction de montant, identifiants privés et fréquences invalides refusés |
+| Compatibilité mensuelle et réserve | Anciennes enveloppes JSON lues en mensuel ; montant annuel divisé par douze uniquement pour le calcul indicatif de réserve |
+| Marqueur SQLite v4 | Sauvegarde et conservation exacte de l’enveloppe v3 ; anciennes images limitées au mensuel bloquées |
 
 Le conteneur de contrôle et ses volumes anonymes ont été supprimés après vérification. Aucun compte, secret ou serveur de production n’a été créé pour vous. Aucun accès au VPS n’a été effectué.
 

@@ -123,7 +123,7 @@ internal static class AccessRegression
                 await db.Database.ExecuteSqlRawAsync("PRAGMA user_version = 1");
                 await DatabaseSchema.InitializeAsync(db, clock);
                 using var command = db.Database.GetDbConnection().CreateCommand(); command.CommandText = "PRAGMA user_version";
-                Check(Convert.ToInt32(await command.ExecuteScalarAsync()) == 2, "Old application images can still open the private vault.");
+                Check(Convert.ToInt32(await command.ExecuteScalarAsync()) == DatabaseSchema.CurrentVersion, "Old application images can still open the private vault.");
             }
             Check((await finance.ReadAsync(first)).Accounts.Count == 0 && (await finance.ReadAsync(second)).Goals.Count == 0, "Legacy data automatically disclosed.");
             var migration = new LegacyAccessMigrator(factory, provider.GetRequiredService<IDataProtectionProvider>(), provider.GetRequiredService<StorageGate>(), clock);

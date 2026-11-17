@@ -134,6 +134,8 @@ await Test("Invalid goals and invalid updates do not partially persist", async (
     await Reject(() => finance.SavePolicyAsync(actor, "Bad", 0, 1m));
     var w = await finance.ReadAsync(actor); Check(w.Goals.Count == 0 && w.Name == "Notre foyer", "Invalid update partially persisted.");
 });
+await RecurrenceRegression.RunAsync(Test, scope.ServiceProvider, finance, actor, clock);
+await LoanRegression.RunAsync(Test, scope.ServiceProvider, finance, actor, clock);
 await AccessRegression.RunAsync(Test, scope.ServiceProvider, finance, actor, clock);
 await Test("HTTPS host: authentication, CSRF, protected routes, export, MFA and logout", async () =>
 {
@@ -149,7 +151,7 @@ await Test("HTTPS host: authentication, CSRF, protected routes, export, MFA and 
     var httpClock = new TestClock(DateTimeOffset.UtcNow.AddMinutes(-2)); httpServices.AddSingleton<TimeProvider>(httpClock); httpServices.AddSingleton<StorageGate>();
     httpServices.AddDataProtection().SetApplicationName("CashHarbor.v1").PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(httpDirectory, "keys"))).ProtectKeysWithCertificate(X509CertificateLoader.LoadPkcs12FromFile(certPath, certPassword, X509KeyStorageFlags.EphemeralKeySet));
     httpServices.AddDbContextFactory<VaultDb>(o => o.UseSqlite($"Data Source={Path.Combine(httpDirectory, "cashharbor.db")}")); httpServices.AddScoped<IIdentityService, IdentityService>();
-    httpServices.AddScoped<IWorkspaceStore, EncryptedWorkspaceStore>(); httpServices.AddScoped<FinanceService>();
+    httpServices.AddScoped<IWorkspaceStore, EncryptedWorkspaceStore>(); httpServices.AddScoped<FinanceService>(); httpServices.AddScoped<LoanService>();
     await using var httpProvider = httpServices.BuildServiceProvider();
     var httpFactory = httpProvider.GetRequiredService<IDbContextFactory<VaultDb>>(); await using (var db = await httpFactory.CreateDbContextAsync()) await db.Database.EnsureCreatedAsync();
     var httpSecret = Totp.NewSecret(); await httpProvider.GetRequiredService<IIdentityService>().ProvisionAsync("web@example.test", password, httpSecret, Totp.Code(httpSecret, httpClock.Now.ToUnixTimeSeconds() / 30), false);
@@ -180,6 +182,17 @@ await Test("HTTPS host: authentication, CSRF, protected routes, export, MFA and 
     await sample.AddTransactionAsync(partnerActor, partnerAccount, "B_PRIVATE_OPERATION", "Autres", 12345m, sampleDate, EntryKind.Income);
     await sample.AddRecurrenceAsync(partnerActor, partnerAccount, "B_PRIVATE_RECURRENCE", "Autres", -77m, sampleDate, true);
     await sample.SaveGoalAsync(partnerActor, null, "B_PRIVATE_GOAL", 100m, 20m, null);
+    var sampleLoans = httpProvider.GetRequiredService<LoanService>();
+    await sample.AddAccountAsync(sampleActor, "Compte joint", "Banque du foyer", AccountKind.Current, 2400m, sampleDate.AddMonths(-6), AccountVisibility.Joint);
+    var jointPaymentAccount = (await sample.ReadAsync(sampleActor)).Accounts.Single(a => a.Name == "Compte joint").Id;
+    await sampleLoans.SaveAsync(sampleActor, null, new("Prêt auto personnel", "Banque du foyer", LoanKind.Vehicle, 9800m, 4.5m, 48, sampleDate.AddMonths(-12), LoanInsuranceKind.FixedMonthly, 8m, 0, 80m, 4.9m, 10, AccountVisibility.Personal, sampleAccount));
+    await sampleLoans.SaveAsync(sampleActor, null, new("Notre prêt immobilier", "Banque du foyer", LoanKind.Mortgage, 185000m, 3.45m, 240, sampleDate.AddMonths(-18), LoanInsuranceKind.InitialCapitalRate, 0, .3m, 1200m, 3.92m, 18, AccountVisibility.Joint, jointPaymentAccount));
+    await sampleLoans.SaveAsync(partnerActor, null, new("B_PRIVATE_LOAN", "B_PRIVATE_LENDER", LoanKind.Consumer, 5000m, 5m, 36, sampleDate.AddMonths(-2), LoanInsuranceKind.FixedMonthly, 5m, 0, 0, null, 0, AccountVisibility.Personal, partnerAccount));
+    var samplePrivateLoan = (await sample.ReadAsync(sampleActor)).Loans.Single(l => l.Visibility == AccountVisibility.Personal);
+    var sampleSharedLoan = (await sample.ReadAsync(sampleActor)).Loans.Single(l => l.Visibility == AccountVisibility.Joint);
+    var partnerLoan = (await sample.ReadAsync(partnerActor)).Loans.Single(l => l.OwnerId == partnerActor);
+    await sampleLoans.ConfirmAsync(sampleActor, samplePrivateLoan.Id, 11, sampleDate, false);
+    await sampleLoans.ConfirmAsync(partnerActor, partnerLoan.Id, 1, sampleDate, true);
     var listener = new TcpListener(IPAddress.Loopback, 0); listener.Start(); var port = ((IPEndPoint)listener.LocalEndpoint).Port; listener.Stop();
     var origin = $"https://127.0.0.1:{port}";
     var start = new ProcessStartInfo("dotnet") { WorkingDirectory = Path.Combine(root, "CashHarbor.client"), RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true };
@@ -200,7 +213,7 @@ await Test("HTTPS host: authentication, CSRF, protected routes, export, MFA and 
         for (var i = 0; i < 24 && !process.HasExited; i++) { try { var health = await client.GetAsync("/health"); lastHealth = health.StatusCode + " " + await health.Content.ReadAsStringAsync(); if (health.IsSuccessStatusCode) { ready = true; break; } } catch (HttpRequestException e) { lastHealth = e.ToString(); } await Task.Delay(250); }
         if (!ready) Console.Error.WriteLine("Health failure: " + lastHealth);
         if (!ready) throw new Exception("Host did not start: " + (process.HasExited ? await errors : "timeout"));
-        foreach (var route in new[] { "/", "/comptes", "/operations", "/objectifs", "/echeances", "/parametres", "/export/csv", "/export/json" })
+        foreach (var route in new[] { "/", "/comptes", "/operations", "/objectifs", "/echeances", "/parametres", "/prets", "/prets/" + samplePrivateLoan.Id, "/export/loan/" + samplePrivateLoan.Id + "/csv", "/export/csv", "/export/json" })
             Check((await client.GetAsync(route)).StatusCode is HttpStatusCode.Redirect or HttpStatusCode.Unauthorized, "Anonymous access to " + route);
         var login = await client.GetAsync("/connexion"); var html = await login.Content.ReadAsStringAsync(); Check(login.IsSuccessStatusCode && html.Contains("Votre espace vous attend"), "Login page did not render.");
         var cssPath = WebUtility.HtmlDecode(Regex.Match(html, "rel=\"stylesheet\" href=\"([^\"]+)\"").Groups[1].Value);
@@ -214,7 +227,7 @@ await Test("HTTPS host: authentication, CSRF, protected routes, export, MFA and 
         var response = await client.PostAsync("/auth/login", new FormUrlEncodedContent(values)); Check(response.StatusCode == HttpStatusCode.Redirect && response.Headers.Location?.OriginalString == "/", "Login failed.");
         var authCookie = response.Headers.GetValues("Set-Cookie").Single(c => c.StartsWith("__Host-CashHarbor="));
         Check(authCookie.Contains("secure", StringComparison.OrdinalIgnoreCase) && authCookie.Contains("httponly", StringComparison.OrdinalIgnoreCase) && authCookie.Contains("samesite=strict", StringComparison.OrdinalIgnoreCase), "Cookie is missing protections.");
-        foreach (var route in new[] { "/", "/comptes", "/operations", "/objectifs", "/echeances", "/parametres" }) Check((await client.GetAsync(route)).IsSuccessStatusCode, "Authenticated route failed: " + route);
+        foreach (var route in new[] { "/", "/comptes", "/operations", "/objectifs", "/echeances", "/parametres", "/prets", "/prets/" + samplePrivateLoan.Id }) Check((await client.GetAsync(route)).IsSuccessStatusCode, "Authenticated route failed: " + route);
         Check((await client.PostAsync("/actions/account-add", new FormUrlEncodedContent(new Dictionary<string, string>()))).StatusCode == HttpStatusCode.BadRequest, "Write CSRF accepted.");
         html = await client.GetStringAsync("/comptes"); token = Token(html);
         response = await client.PostAsync("/actions/account-add", new FormUrlEncodedContent(new Dictionary<string, string> { ["__RequestVerificationToken"] = token, ["name"] = "Web Account", ["institution"] = "Bank", ["kind"] = "Current", ["visibility"] = "Personal", ["opening"] = "123.45", ["date"] = DateTime.Today.ToString("yyyy-MM-dd") }));
@@ -226,7 +239,7 @@ await Test("HTTPS host: authentication, CSRF, protected routes, export, MFA and 
         {
             var fixturePath = Path.Combine(httpDirectory, "ui-fixture.json");
             var cookieValues = cookies.GetCookies(new Uri(origin)).Cast<Cookie>().Select(c => new { name = c.Name, value = c.Value, url = origin, secure = c.Secure, httpOnly = c.HttpOnly, sameSite = "Strict" }).ToArray();
-            await File.WriteAllTextAsync(fixturePath, System.Text.Json.JsonSerializer.Serialize(new { origin, cookies = cookieValues }));
+            await File.WriteAllTextAsync(fixturePath, System.Text.Json.JsonSerializer.Serialize(new { origin, cookies = cookieValues, loanRoutes = new[] { "/prets/" + samplePrivateLoan.Id, "/prets/" + sampleSharedLoan.Id } }));
             try
             {
                 var browserStart = new ProcessStartInfo("node") { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };

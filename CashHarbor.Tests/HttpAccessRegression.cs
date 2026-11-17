@@ -2,6 +2,7 @@ using System.Net;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using CashHarbor.Infra;
+using CashHarbor.Domain;
 
 internal static class HttpAccessRegression
 {
@@ -12,11 +13,12 @@ internal static class HttpAccessRegression
         var login = await second.GetStringAsync("/connexion");
         var response = await second.PostAsync("/auth/login", Form(new() { ["__RequestVerificationToken"] = Token(login), ["email"] = "partner@example.test", ["password"] = password, ["code"] = Totp.Code(secondSecret, DateTimeOffset.UtcNow.ToUnixTimeSeconds() / 30) }));
         Check(response.StatusCode == HttpStatusCode.Redirect && response.Headers.Location?.OriginalString == "/", "Second login failed.");
-        foreach (var route in new[] { "/", "/comptes", "/comptes?type=epargne", "/operations", "/operations?compte=" + firstAccount, "/objectifs", "/echeances", "/parametres", "/export/json", "/export/csv" })
+        foreach (var route in new[] { "/", "/comptes", "/comptes?type=epargne", "/operations", "/operations?compte=" + firstAccount, "/objectifs", "/echeances", "/prets", "/parametres", "/export/json", "/export/csv" })
         {
             var a = await first.GetStringAsync(route); var b = await second.GetStringAsync(route);
             Check(!a.Contains("B_PRIVATE"), "Partner data leaked to first user on " + route);
             Check(!b.Contains("Mon compte personnel") && !b.Contains("Mon projet personnel"), "First user data leaked to partner on " + route);
+            Check(!WebUtility.HtmlDecode(b).Contains("Prêt auto personnel"), "Private loan leaked to partner on " + route);
         }
         using (var json = JsonDocument.Parse(await second.GetStringAsync("/export/json")))
         {
@@ -41,7 +43,61 @@ internal static class HttpAccessRegression
         response = await second.PostAsync("/actions/account-edit", Form(new() { ["__RequestVerificationToken"] = token, ["id"] = sharedAccount.ToString(), ["name"] = "Notre épargne commune", ["institution"] = "Banque du foyer" }));
         Check(response.Headers.Location?.OriginalString.Contains("succes=1") == true, "Joint account could not be edited by partner.");
         Check(!(await first.GetStringAsync("/export/json")).Contains("B_PRIVATE"), "New partner account leaked after joint update.");
+        await CheckLoansAsync(first, second, token, firstActor, secondActor);
+        await CheckAnnualRecurrencesAsync(first, second, token, firstActor, sharedAccount);
         Console.WriteLine("HTTP PASS two identities: pages, filters, charts, exports, forged IDs, owner assignment and common access");
+    }
+    private static async Task CheckLoansAsync(HttpClient first, HttpClient second, string token, Guid firstActor, Guid secondActor)
+    {
+        var a = JsonSerializer.Deserialize<Workspace>(await first.GetStringAsync("/export/json"))!;
+        var own = a.Loans.Single(l => l.OwnerId == firstActor); var joint = a.Loans.Single(l => l.Visibility == AccountVisibility.Joint);
+        foreach (var route in new[] { "/prets/" + own.Id, "/export/loan/" + own.Id + "/csv" })
+        {
+            var response = await second.GetAsync(route); Check(response.StatusCode == HttpStatusCode.NotFound, "Private loan details or export accessible by guessed ID.");
+            Check((await first.GetAsync(route)).IsSuccessStatusCode, "Owner cannot access loan details or export.");
+        }
+        Check((await second.GetAsync("/prets/" + joint.Id)).IsSuccessStatusCode && (await second.GetAsync("/export/loan/" + joint.Id + "/csv")).IsSuccessStatusCode, "Common loan not accessible to partner.");
+        var noCsrf = await first.PostAsync("/actions/loan-confirm", Form(new() { ["id"] = own.Id.ToString(), ["number"] = "12", ["paidOn"] = DateTime.Today.ToString("yyyy-MM-dd") }));
+        Check(noCsrf.StatusCode == HttpStatusCode.BadRequest, "Loan mutation accepted without CSRF.");
+        foreach (var action in new[] { "loan-confirm", "loan-account", "loan-delete", "loan-undo" })
+        {
+            var response = await second.PostAsync("/actions/" + action, Form(new() { ["__RequestVerificationToken"] = token, ["id"] = own.Id.ToString(), ["number"] = "12", ["paidOn"] = DateTime.Today.ToString("yyyy-MM-dd"), ["mode"] = "tracking" }));
+            Check(response.Headers.Location?.OriginalString.Contains("erreur=") == true, "Forged private loan mutation accepted: " + action);
+        }
+        var draft = new Dictionary<string, string> { ["__RequestVerificationToken"] = token, ["id"] = own.Id.ToString(), ["name"] = "B_PRIVATE_LOAN_HTTP", ["lender"] = "B_PRIVATE_LENDER_HTTP", ["loanKind"] = "Consumer", ["principal"] = "1200", ["rate"] = "3.5", ["months"] = "12", ["firstDue"] = DateTime.Today.AddMonths(-1).ToString("yyyy-MM-dd"), ["insuranceKind"] = "FixedMonthly", ["insurance"] = "1", ["insuranceRate"] = "0", ["fees"] = "0", ["apr"] = "4.0", ["initialPaid"] = "0", ["visibility"] = "Personal", ["ownerId"] = firstActor.ToString() };
+        var result = await second.PostAsync("/actions/loan-save", Form(draft)); Check(result.Headers.Location?.OriginalString.Contains("erreur=") == true, "Private loan contract overwritten by partner.");
+        draft.Remove("id"); result = await second.PostAsync("/actions/loan-save", Form(draft)); Check(result.Headers.Location?.OriginalString.Contains("succes=1") == true, "HTTP loan creation failed.");
+        var b = JsonSerializer.Deserialize<Workspace>(await second.GetStringAsync("/export/json"))!;
+        Check(b.Loans.Single(l => l.Name == "B_PRIVATE_LOAN_HTTP").OwnerId == secondActor, "Loan owner supplied in form was trusted.");
+        Check(!(await first.GetStringAsync("/export/json")).Contains("B_PRIVATE"), "New private partner loan leaked.");
+        var number = LoanCalculator.PaidCount(joint, b.LoanPayments) + 1;
+        var payment = new Dictionary<string, string> { ["__RequestVerificationToken"] = token, ["id"] = joint.Id.ToString(), ["number"] = number.ToString(), ["paidOn"] = DateTime.Today.ToString("yyyy-MM-dd"), ["mode"] = "tracking" };
+        result = await second.PostAsync("/actions/loan-confirm", Form(payment)); Check(result.Headers.Location?.OriginalString.Contains("succes=1") == true, "Partner could not confirm common loan payment.");
+        result = await second.PostAsync("/actions/loan-confirm", Form(payment)); Check(result.Headers.Location?.OriginalString.Contains("erreur=") == true, "Double POST confirmed installment twice.");
+        result = await second.PostAsync("/actions/loan-undo", Form(payment)); Check(result.Headers.Location?.OriginalString.Contains("succes=1") == true, "Partner could not undo common loan payment.");
+        Console.WriteLine("HTTP PASS loans: private details/CSV blocked, common access, CSRF, forged owner/IDs and idempotent repayments");
+    }
+    private static async Task CheckAnnualRecurrencesAsync(HttpClient first, HttpClient second, string secondToken, Guid actor, Guid sharedAccount)
+    {
+        var w = JsonSerializer.Deserialize<Workspace>(await first.GetStringAsync("/export/json"))!;
+        var account = w.Accounts.First(a => a.OwnerId == actor).Id;
+        var token = Token(await first.GetStringAsync("/echeances"));
+        var draft = new Dictionary<string, string> { ["__RequestVerificationToken"] = token, ["account"] = account.ToString(), ["label"] = "PRIVATE_ANNUAL_WATER", ["category"] = "Logement", ["amount"] = "-600", ["next"] = DateTime.Today.AddYears(1).ToString("yyyy-MM-dd"), ["essential"] = "on", ["frequency"] = "Yearly" };
+        var response = await first.PostAsync("/actions/recurrence-add", Form(draft)); Check(response.Headers.Location?.OriginalString.Contains("succes=1") == true, "HTTP annual creation failed.");
+        w = JsonSerializer.Deserialize<Workspace>(await first.GetStringAsync("/export/json"))!;
+        var recurrence = w.Recurrences.Single(r => r.Label == "PRIVATE_ANNUAL_WATER");
+        Check(recurrence.Frequency == RecurrenceFrequency.Yearly && recurrence.Cents == -60000, "Annual frequency or full amount not stored.");
+        Check(!(await second.GetStringAsync("/echeances")).Contains("PRIVATE_ANNUAL_WATER"), "Private annual bill leaked.");
+        draft["id"] = recurrence.Id.ToString(); draft["__RequestVerificationToken"] = secondToken;
+        response = await second.PostAsync("/actions/recurrence-edit", Form(draft)); Check(response.Headers.Location?.OriginalString.Contains("erreur=") == true, "Partner edited a hidden annual bill.");
+        draft["__RequestVerificationToken"] = token; draft["amount"] = "-612";
+        response = await first.PostAsync("/actions/recurrence-edit", Form(draft)); Check(response.Headers.Location?.OriginalString.Contains("succes=1") == true, "Owner could not edit annual bill.");
+        draft.Remove("id"); draft["frequency"] = "Weekly";
+        response = await first.PostAsync("/actions/recurrence-add", Form(draft)); Check(response.Headers.Location?.OriginalString.Contains("erreur=") == true, "Invalid recurrence frequency accepted over HTTP.");
+        draft["frequency"] = "Yearly"; draft["label"] = "Assurance annuelle commune"; draft["account"] = sharedAccount.ToString(); draft["__RequestVerificationToken"] = secondToken;
+        response = await second.PostAsync("/actions/recurrence-add", Form(draft)); Check(response.Headers.Location?.OriginalString.Contains("succes=1") == true, "Shared annual bill creation failed.");
+        Check(WebUtility.HtmlDecode(await first.GetStringAsync("/echeances")).Contains("Assurance annuelle commune"), "Shared annual bill absent from partner's view.");
+        Console.WriteLine("HTTP PASS annual recurrences: create/edit, full amount, shared access, private isolation and invalid frequencies");
     }
     private static FormUrlEncodedContent Form(Dictionary<string, string> values) => new(values);
     private static string Token(string html) => WebUtility.HtmlDecode(Regex.Match(html, "name=\"__RequestVerificationToken\" value=\"([^\"]+)\"").Groups[1].Value);

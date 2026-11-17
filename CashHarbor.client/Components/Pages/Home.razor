@@ -9,15 +9,20 @@
     var income = entries.Where(t => t.Cents > 0).Sum(t => t.Cents);
     var expense = -entries.Where(t => t.Cents < 0).Sum(t => t.Cents);
     var total = W.Accounts.Sum(a => W.Balance(a.Id));
+    var debt = W.Loans.Sum(l => LoanCalculator.Remaining(l, W.LoanPayments));
     var savings = W.Accounts.Where(a => a.Kind == AccountKind.Savings).Sum(a => W.Balance(a.Id));
     <header class="page-header"><div><span class="eyebrow">@W.Name · @Today.ToString("MMMM yyyy", CultureInfo.GetCultureInfo("fr-FR"))</span><h1>Un cap sur vos finances<span class="accent">.</span></h1><p>Vos comptes réunis. Vos projets en vue.</p></div><a class="button" href="/operations#ajouter">Ajouter une opération ↗</a></header>
     <Notice />
     <section class="stats" aria-label="Résumé du foyer">
-        <article class="stat dark"><span>Patrimoine suivi</span><strong>@Euro(total)</strong><small>@W.Accounts.Count compte(s) réunis</small></article>
+        <article class="stat dark"><span>Solde net suivi</span><strong>@Euro(total - debt)</strong><small>Comptes moins capital restant des prêts</small></article>
         <article class="stat"><span>Revenus du mois</span><strong>@Euro(income)</strong><small>Hors virements internes</small></article>
         <article class="stat"><span>Dépenses du mois</span><strong>@Euro(expense)</strong><small>Du @month.ToString("dd MMM", CultureInfo.GetCultureInfo("fr-FR")) à aujourd’hui</small></article>
         <article class="stat"><span>Épargne suivie</span><strong>@Euro(savings)</strong><small>Sur vos comptes d’épargne</small></article>
     </section>
+    @if (W.Loans.Count > 0)
+    {
+        <section class="panel loan-summary"><div><span class="eyebrow">VOS ENGAGEMENTS VISIBLES</span><h2>@Euro(debt) de capital restant dû</h2><p class="muted">Pour @Euro(total) de soldes de comptes suivis. Les intérêts futurs et la valeur des biens immobiliers ne sont pas inclus dans le solde net.</p></div><a class="button secondary" href="/prets">Suivre mes prêts ↗</a></section>
+    }
     <section class="ownership-summary" aria-label="Répartition par visibilité">
         <a class="panel scope-card" href="/comptes?vue=personnel"><span class="eyebrow">MON ESPACE PERSONNEL</span><h2>Mes comptes</h2><strong>@Euro(W.Accounts.Where(a => a.Visibility == AccountVisibility.Personal).Sum(a => W.Balance(a.Id)))</strong><p>Vous seul pouvez voir vos comptes et votre épargne personnels. ↗</p></a>
         <a class="panel scope-card" href="/comptes?vue=commun"><span class="eyebrow">NOTRE ESPACE COMMUN</span><h2>Nos comptes communs</h2><strong>@Euro(W.Accounts.Where(a => a.Visibility == AccountVisibility.Joint).Sum(a => W.Balance(a.Id)))</strong><p>Comptes joints et épargne partagée, visibles par vous deux. ↗</p></a>

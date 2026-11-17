@@ -1,0 +1,16 @@
+<form class="@(Value == null ? "form-grid" : "stack")" method="post" action="@(Value == null ? "/actions/recurrence-add" : "/actions/recurrence-edit")"><AntiforgeryToken />
+    @if (Value != null) { <input type="hidden" name="id" value="@Value.Id" /> }
+    <label>Libellé<input name="label" maxlength="100" value="@Value?.Label" placeholder="Facture d’eau, loyer…" required /></label>
+    @if (Value == null) { <label>Compte<select name="account">@foreach (var a in Accounts) { <option value="@a.Id">@a.Name</option> }</select></label> }
+    <label>Fréquence<select name="frequency"><option value="Monthly" selected="@(Value == null || Value.Frequency == RecurrenceFrequency.Monthly)">Mensuelle — chaque mois</option><option value="Yearly" selected="@(Value?.Frequency == RecurrenceFrequency.Yearly)">Annuelle — une fois par an</option></select></label>
+    <label>Montant à chaque échéance (€)<input name="amount" type="number" min="-100000000" max="100000000" step="0.01" value="@(Value == null ? "" : FinancePage.Amount(Value.Cents))" required /><small>Négatif pour une dépense, positif pour un revenu. Pour une facture annuelle de 600 €, saisir -600.</small></label>
+    <label>Catégorie<select name="category">@if (Value != null && !FinanceService.Categories.Contains(Value.Category)) { <option value="@Value.Category" selected>@Value.Category</option> } @foreach (var category in FinanceService.Categories) { <option value="@category" selected="@(category == Value?.Category)">@category</option> }</select></label>
+    <label>@(Value == null ? "Première date" : "Prochaine date")<input name="next" type="date" min="1900-01-01" max="@FinancePage.Iso(Today.AddYears(5))" value="@FinancePage.Iso(Value?.NextDate ?? Today)" required /><small>Annuel : même mois et même jour. Le 29 février est reporté au 28 février les années non bissextiles.</small></label>
+    <label class="checkbox"><input name="essential" type="checkbox" checked="@(Value?.Essential ?? false)" /> Dépense essentielle</label>
+    <div class="form-actions"><button>@(Value == null ? "Ajouter cette échéance ↗" : "Enregistrer les modifications")</button></div>
+</form>
+@code {
+    [Parameter] public RecurringOperation? Value { get; set; }
+    [Parameter] public IReadOnlyList<FinancialAccount> Accounts { get; set; } = [];
+    [Parameter] public DateOnly Today { get; set; }
+}

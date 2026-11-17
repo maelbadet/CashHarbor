@@ -38,6 +38,7 @@ builder.Services.AddDbContextFactory<VaultDb>(options => options.UseSqlite($"Dat
 builder.Services.AddSingleton<StorageGate>(); builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<IWorkspaceStore, EncryptedWorkspaceStore>(); builder.Services.AddScoped<IIdentityService, IdentityService>(); builder.Services.AddScoped<FinanceService>();
 builder.Services.AddScoped<LegacyAccessMigrator>();
+builder.Services.AddScoped<LoanService>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme).AddCookie(options =>
 {

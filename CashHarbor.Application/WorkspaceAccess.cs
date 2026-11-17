@@ -11,13 +11,16 @@ public static class WorkspaceAccess
     {
         var accounts = source.Accounts.Where(a => CanSee(a.Visibility, a.OwnerId, actor)).ToList();
         var ids = accounts.Select(a => a.Id).ToHashSet();
+        var loans = source.Loans.Where(l => CanSee(l.Visibility, l.OwnerId, actor)).ToList();
+        var loanIds = loans.Select(l => l.Id).ToHashSet();
         return new()
         {
             Name = source.Name, Currency = source.Currency, EmergencyPolicy = source.EmergencyPolicy,
             Accounts = accounts, Transactions = source.Transactions.Where(t => ids.Contains(t.AccountId)).ToList(),
             Goals = source.Goals.Where(g => CanSee(g.Visibility, g.OwnerId, actor)).ToList(),
             Recurrences = source.Recurrences.Where(r => ids.Contains(r.AccountId)).ToList(),
-            Snapshots = source.Snapshots.Where(s => ids.Contains(s.AccountId)).ToList()
+            Snapshots = source.Snapshots.Where(s => ids.Contains(s.AccountId)).ToList(),
+            Loans = loans, LoanPayments = source.LoanPayments.Where(p => loanIds.Contains(p.LoanId)).ToList()
         };
     }
 
@@ -27,6 +30,33 @@ public static class WorkspaceAccess
         var original = VisibleTo(full, actor);
         var accountIds = original.Accounts.Select(a => a.Id).ToHashSet();
         var goalIds = original.Goals.Select(g => g.Id).ToHashSet();
+        var loanIds = original.Loans.Select(l => l.Id).ToHashSet();
+        foreach (var loan in changed.Loans)
+        {
+            var previous = full.Loans.SingleOrDefault(l => l.Id == loan.Id);
+            ValidateAccess(loan.Visibility, loan.OwnerId, previous?.Visibility, previous?.OwnerId, actor);
+            if (previous != null && !loanIds.Contains(loan.Id)) throw new RuleException("Prêt introuvable.");
+            if (previous != null && (loan.Visibility != previous.Visibility || loan.OwnerId != previous.OwnerId)) throw new RuleException("La visibilité du prêt ne peut pas être modifiée.");
+            if (loan.PaymentAccountId is { } paymentId)
+            {
+                var account = changed.Accounts.SingleOrDefault(a => a.Id == paymentId);
+                if (account == null || account.Visibility != loan.Visibility || account.OwnerId != loan.OwnerId)
+                    throw new RuleException("Le compte de remboursement doit avoir la même visibilité et le même titulaire que le prêt.");
+            }
+        }
+        var changedLoanIds = changed.Loans.Select(l => l.Id).ToHashSet();
+        if (changed.LoanPayments.Any(p => !changedLoanIds.Contains(p.LoanId))) throw new RuleException("Prêt introuvable.");
+        foreach (var transaction in changed.Transactions.Where(t => t.LoanId != null))
+        {
+            var loan = changed.Loans.SingleOrDefault(l => l.Id == transaction.LoanId);
+            var account = changed.Accounts.SingleOrDefault(a => a.Id == transaction.AccountId);
+            if (loan == null || account == null || account.Visibility != loan.Visibility || account.OwnerId != loan.OwnerId)
+                throw new RuleException("Un remboursement ne peut pas exposer les informations d’un prêt personnel sur un compte commun.");
+        }
+        foreach (var payment in changed.LoanPayments.Where(p => p.TransactionId != null))
+            if (!changed.Transactions.Any(t => t.Id == payment.TransactionId && t.LoanId == payment.LoanId && t.LoanInstallment == payment.InstallmentNumber))
+                throw new RuleException("Le règlement et son opération liée doivent rester cohérents.");
+        RejectForeignIds(full.LoanPayments, changed.LoanPayments, p => p.Id, p => loanIds.Contains(p.LoanId));
         foreach (var a in changed.Accounts)
         {
             var previous = full.Accounts.SingleOrDefault(x => x.Id == a.Id);
@@ -53,6 +83,8 @@ public static class WorkspaceAccess
         full.Recurrences.RemoveAll(r => accountIds.Contains(r.AccountId)); full.Recurrences.AddRange(changed.Recurrences);
         full.Snapshots.RemoveAll(s => accountIds.Contains(s.AccountId)); full.Snapshots.AddRange(changed.Snapshots);
         full.Goals.RemoveAll(g => goalIds.Contains(g.Id)); full.Goals.AddRange(changed.Goals);
+        full.Loans.RemoveAll(l => loanIds.Contains(l.Id)); full.Loans.AddRange(changed.Loans);
+        full.LoanPayments.RemoveAll(p => loanIds.Contains(p.LoanId)); full.LoanPayments.AddRange(changed.LoanPayments);
         full.Name = changed.Name; full.EmergencyPolicy = changed.EmergencyPolicy;
     }
     private static void ValidateAccess(AccountVisibility visibility, Guid? owner, AccountVisibility? oldVisibility, Guid? oldOwner, Guid actor)

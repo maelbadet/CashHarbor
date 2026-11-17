@@ -1,0 +1,27 @@
+<form class="form-grid" method="post" action="/actions/loan-save"><AntiforgeryToken />
+    @if (Value != null) { <input type="hidden" name="id" value="@Value.Id" /><input type="hidden" name="visibility" value="@Value.Visibility" /> }
+    <label>Nom du prêt<input name="name" maxlength="100" value="@Value?.Name" placeholder="Prêt immobilier, voiture…" required /></label>
+    <label>Établissement prêteur<input name="lender" maxlength="100" value="@Value?.Lender" required /></label>
+    <label>Type de prêt<select name="loanKind">@foreach (var kind in Enum.GetValues<LoanKind>()) { <option value="@kind" selected="@(kind == (Value?.Kind ?? LoanKind.Mortgage))">@LoanLabel(kind)</option> }</select></label>
+    @if (Value == null) { <label>Visibilité<select name="visibility"><option value="Personal">Personnel — visible uniquement par moi</option><option value="Joint">Commun — visible par nous deux</option></select></label> }
+    else { <div><small>Visibilité conservée</small><p>@FinancePage.Visibility(Value.Visibility)</p></div> }
+    <label>Capital emprunté initial (€)<input name="principal" type="number" step="0.01" min="0.01" max="100000000" value="@(Value == null ? "" : FinancePage.Amount(Value.PrincipalCents))" required /></label>
+    <label>Taux nominal annuel fixe (%)<input name="rate" type="number" step="0.0001" min="0" max="100" value="@Rate(Value?.AnnualNominalRate ?? 0)" required /><small>Le taux utilisé pour calculer les intérêts, hors assurance et frais.</small></label>
+    <label>Durée initiale (mois)<input name="months" type="number" min="1" max="600" value="@(Value?.TermMonths ?? 240)" required /></label>
+    <label>Date de la première échéance<input name="firstDue" type="date" min="1900-01-01" max="@FinancePage.Iso(Today.AddYears(2))" value="@FinancePage.Iso(Value?.FirstDueDate ?? Today.AddMonths(1))" required /></label>
+    <label>Calcul de l’assurance<select name="insuranceKind"><option value="FixedMonthly" selected="@(Value == null || Value.InsuranceKind == LoanInsuranceKind.FixedMonthly)">Montant mensuel fixe</option><option value="InitialCapitalRate" selected="@(Value?.InsuranceKind == LoanInsuranceKind.InitialCapitalRate)">Taux annuel sur capital initial</option><option value="RemainingCapitalRate" selected="@(Value?.InsuranceKind == LoanInsuranceKind.RemainingCapitalRate)">Taux annuel sur capital restant dû</option></select></label>
+    <label>Assurance mensuelle fixe (€)<input name="insurance" type="number" min="0" max="100000000" step="0.01" value="@FinancePage.Amount(Value?.MonthlyInsuranceCents ?? 0)" required /><small>Utilisée uniquement pour le mode montant fixe. Saisir le total facturé pour tous les emprunteurs.</small></label>
+    <label>Taux annuel d’assurance (%)<input name="insuranceRate" type="number" min="0" max="100" step="0.0001" value="@Rate(Value?.AnnualInsuranceRate ?? 0)" required /><small>Utilisé uniquement pour les deux modes basés sur un taux.</small></label>
+    <label>Frais initiaux connus (€)<input name="fees" type="number" min="0" max="100000000" step="0.01" value="@FinancePage.Amount(Value?.FeesCents ?? 0)" required /><small>Frais de dossier, garantie et autres frais saisis : inclus dans l’estimation du coût, sans débit automatique.</small></label>
+    <label>TAEG du contrat (%) — facultatif<input name="apr" type="number" min="0" max="100" step="0.0001" value="@(Value?.ContractApr is { } apr ? Rate(apr) : "")" /><small>Valeur informative du contrat. Le TAEG n’est pas recalculé et ne remplace pas le taux nominal.</small></label>
+    <label>Mensualités déjà réglées à l’ajout<input name="initialPaid" type="number" min="0" max="600" value="@(Value?.InitialPaidInstallments ?? 0)" required /><small>Pour reprendre un prêt en cours sans recréer les anciens débits. Compter uniquement les échéances réellement payées.</small></label>
+    <label>Compte de remboursement — facultatif<select name="account"><option value="">Aucun — suivi du prêt uniquement</option>@foreach (var account in Accounts.Where(a => Value == null || a.Visibility == Value.Visibility)) { <option value="@account.Id" selected="@(Value?.PaymentAccountId == account.Id)">@account.Name · @(account.Visibility == AccountVisibility.Joint ? "commun" : "personnel")</option> }</select><small>Un prêt personnel utilise un compte personnel ; un prêt commun utilise un compte commun.</small></label>
+    <div class="form-actions"><button>@(Value == null ? "Ajouter le prêt ↗" : "Enregistrer le contrat")</button></div>
+</form>
+@code {
+    [Parameter] public Loan? Value { get; set; }
+    [Parameter, EditorRequired] public IReadOnlyList<FinancialAccount> Accounts { get; set; } = [];
+    [Parameter] public DateOnly Today { get; set; }
+    public static string Rate(decimal value) => value.ToString("0.####", CultureInfo.InvariantCulture);
+    public static string LoanLabel(LoanKind kind) => kind switch { LoanKind.Mortgage => "Immobilier", LoanKind.Consumer => "Consommation", LoanKind.Vehicle => "Véhicule", LoanKind.Student => "Étudiant", _ => "Autre" };
+}

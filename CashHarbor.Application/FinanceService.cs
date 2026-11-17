@@ -6,7 +6,7 @@ namespace CashHarbor.Application;
 
 public sealed class FinanceService(IWorkspaceStore store, TimeProvider clock)
 {
-    public static readonly string[] Categories = ["Logement", "Courses", "Transport", "Santé", "Loisirs", "Abonnements", "Salaire", "Autres"];
+    public static readonly string[] Categories = ["Logement", "Courses", "Transport", "Santé", "Loisirs", "Abonnements", "Crédit", "Salaire", "Autres"];
     public DateOnly Today => DateOnly.FromDateTime(clock.GetLocalNow().DateTime);
     public Task<Workspace> ReadAsync(Guid actor, CancellationToken ct = default) => store.ReadAsync(actor, ct);
     public static long Money(decimal value)
@@ -34,6 +34,8 @@ public sealed class FinanceService(IWorkspaceStore store, TimeProvider clock)
     {
         var a = Account(w, id);
         if (!confirmed || a.OwnerId != actor || a.Visibility != AccountVisibility.Personal) throw new RuleException("Confirmez le partage de ce compte et de tout son historique.");
+        if (w.Loans.Any(l => l.PaymentAccountId == id) || w.Transactions.Any(t => t.AccountId == id && t.LoanId != null))
+            throw new RuleException("Ce compte est lié à un prêt personnel ou à ses remboursements. Il ne peut pas être partagé afin de préserver leur confidentialité.");
         w.Accounts[w.Accounts.IndexOf(a)] = a with { Visibility = AccountVisibility.Joint, OwnerId = null };
     });
     public Task RecordBalanceAsync(Guid actor, Guid id, decimal balance, DateOnly date) => store.UpdateAsync(actor, "balance.recorded", w =>
@@ -52,6 +54,7 @@ public sealed class FinanceService(IWorkspaceStore store, TimeProvider clock)
     public Task DeleteAccountAsync(Guid actor, Guid id) => store.UpdateAsync(actor, "account.deleted", w =>
     {
         var a = Account(w, id);
+        if (w.Loans.Any(l => l.PaymentAccountId == id)) throw new RuleException("Détachez d’abord ce compte des prêts qui l’utilisent.");
         if (w.Transactions.Any(t => t.AccountId == id) || w.Recurrences.Any(r => r.AccountId == id) || w.Snapshots.Any(s => s.AccountId == id)) throw new RuleException("Supprimez d’abord les opérations et échéances de ce compte. Les comptes avec relevés sont conservés.");
         w.Accounts.Remove(a);
     });
@@ -79,6 +82,7 @@ public sealed class FinanceService(IWorkspaceStore store, TimeProvider clock)
     {
         var t = w.Transactions.SingleOrDefault(t => t.Id == id) ?? throw new RuleException("Opération introuvable.");
         if (t.Kind == EntryKind.Adjustment) throw new RuleException("Modifiez ce solde depuis le compte, à la date du relevé.");
+        if (t.LoanId != null) throw new RuleException("Annulez ce remboursement depuis le prêt pour conserver un capital restant dû cohérent.");
         var touched = w.Transactions.Where(x => x.Id == id || t.TransferId != null && x.TransferId == t.TransferId).Select(x => x.AccountId).Distinct().ToArray();
         w.Transactions.RemoveAll(x => x.Id == id || (t.TransferId != null && x.TransferId == t.TransferId));
         foreach (var accountId in touched) Reconcile(w, accountId);
@@ -95,12 +99,21 @@ public sealed class FinanceService(IWorkspaceStore store, TimeProvider clock)
         else { var index = w.Goals.FindIndex(g => g.Id == id); if (index < 0) throw new RuleException("Objectif introuvable."); w.Goals[index] = goal; }
     });
     public Task DeleteGoalAsync(Guid actor, Guid id) => store.UpdateAsync(actor, "goal.deleted", w => { if (w.Goals.RemoveAll(g => g.Id == id) == 0) throw new RuleException("Objectif introuvable."); });
-    public Task AddRecurrenceAsync(Guid actor, Guid account, string label, string category, decimal amount, DateOnly next, bool essential) => store.UpdateAsync(actor, "recurrence.created", w =>
+    public Task AddRecurrenceAsync(Guid actor, Guid account, string label, string category, decimal amount, DateOnly next, bool essential, RecurrenceFrequency frequency = RecurrenceFrequency.Monthly) => store.UpdateAsync(actor, "recurrence.created", w =>
     {
         var a = Account(w, account); var cents = Money(amount); Limit(w.Recurrences.Count >= 200);
-        if (cents == 0 || next < a.OpeningDate || next > Today.AddYears(5)) throw new RuleException("Montant non nul et première date valide requis.");
-        w.Recurrences.Add(new(Guid.NewGuid(), account, Text(label), Text(category, 60), cents, next, next.Day, essential));
+        if (cents == 0 || next < a.OpeningDate || next > Today.AddYears(5) || !Enum.IsDefined(frequency)) throw new RuleException("Montant non nul, fréquence et première date valides requis.");
+        w.Recurrences.Add(new(Guid.NewGuid(), account, Text(label), Text(category, 60), cents, next, next.Day, essential, Frequency: frequency, MonthOfYear: next.Month));
     });
+    public Task UpdateRecurrenceAsync(Guid actor, Guid id, string label, string category, decimal amount, DateOnly next, bool essential, RecurrenceFrequency frequency) => store.UpdateAsync(actor, "recurrence.updated", w =>
+    {
+        var r = w.Recurrences.SingleOrDefault(r => r.Id == id) ?? throw new RuleException("Échéance introuvable.");
+        var a = Account(w, r.AccountId); var cents = Money(amount);
+        if (cents == 0 || next < a.OpeningDate || next > Today.AddYears(5) || !Enum.IsDefined(frequency)) throw new RuleException("Montant non nul, fréquence et prochaine date valides requis.");
+        var preserveAnchor = frequency == r.Frequency && next == r.NextDate;
+        w.Recurrences[w.Recurrences.IndexOf(r)] = r with { Label = Text(label), Category = Text(category, 60), Cents = cents, NextDate = next, DayOfMonth = preserveAnchor ? r.DayOfMonth : next.Day, MonthOfYear = preserveAnchor ? r.MonthOfYear ?? r.NextDate.Month : next.Month, Essential = essential, Frequency = frequency };
+    });
+    public static long EssentialMonthlyCents(Workspace w) => checked((long)decimal.Round(-w.Recurrences.Where(r => r.Essential && r.Cents < 0 && r.Active).Sum(r => r.MonthlyEquivalentCents), 0, MidpointRounding.AwayFromZero));
     public Task DeleteRecurrenceAsync(Guid actor, Guid id) => store.UpdateAsync(actor, "recurrence.deleted", w => { if (w.Recurrences.RemoveAll(r => r.Id == id) == 0) throw new RuleException("Échéance introuvable."); });
     // Explicit confirmation only: no background duplication or external bank instruction.
     public Task BookDueAsync(Guid actor) => store.UpdateAsync(actor, "recurrence.booked", w =>
@@ -110,19 +123,18 @@ public sealed class FinanceService(IWorkspaceStore store, TimeProvider clock)
             var next = r.NextDate; var count = 0;
             while (r.Active && next <= Today)
             {
-                if (++count > 120) throw new RuleException("Plus de dix ans d’échéances à rattraper : corrigez la récurrence.");
+                if (++count > 120) throw new RuleException("Plus de 120 échéances à rattraper : corrigez la prochaine date de la récurrence.");
                 Limit(w.Transactions.Count >= 100000);
                 if (!w.Transactions.Any(t => t.RecurrenceId == r.Id && t.Date == next))
                     w.Transactions.Add(new(Guid.NewGuid(), r.AccountId, r.Label, r.Category, r.Cents, next, r.Cents < 0 ? EntryKind.Expense : EntryKind.Income, RecurrenceId: r.Id));
-                var month = new DateOnly(next.Year, next.Month, 1).AddMonths(1);
-                next = month.AddDays(Math.Min(r.DayOfMonth, DateTime.DaysInMonth(month.Year, month.Month)) - 1);
+                next = r.Following(next);
             }
             w.Recurrences[w.Recurrences.IndexOf(r)] = r with { NextDate = next };
         }
         foreach (var id in w.Recurrences.Select(r => r.AccountId).Distinct()) Reconcile(w, id);
     });
     // Preserve observed balances even when a missing older entry is entered later.
-    private static void Reconcile(Workspace w, Guid account)
+    internal static void Reconcile(Workspace w, Guid account)
     {
         var snapshots = w.Snapshots.Where(s => s.AccountId == account).OrderBy(s => s.Date).ToArray();
         var ids = snapshots.Select(s => s.AdjustmentId).Where(id => id != null).ToHashSet();

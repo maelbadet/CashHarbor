@@ -30,7 +30,11 @@ L’application n’a pas fait l’objet d’un audit externe ni d’un pentest 
 
 ## Vérifications utiles
 
+La version courante **v4** conserve la fréquence annuelle dans les enveloppes chiffrées et empêche les images v3, limitées au mensuel, de les rouvrir. Les anciennes récurrences restent mensuelles par défaut. La création, la modification et la comptabilisation des récurrences restent limitées aux comptes accessibles à l’utilisateur, avec validation de fréquence côté serveur et protection antiforgery.
+
 Le marqueur SQLite v2 empêche le démarrage d’une ancienne image v1 qui ignorerait les droits. Les comptes et objectifs v1 sans visibilité sont masqués jusqu’au classement administratif avec `--classify-accounts`. Le changement de version et le classement créent des sauvegardes préalables dans `/data/backups`. Ces commandes nécessitent un accès au terminal du serveur, application web arrêtée. L’administrateur du serveur reste capable de déchiffrer les données : il ne s’agit pas d’un chiffrement de bout en bout entre utilisateurs.
+
+Le marqueur actuel **v3** ajoute la protection contre le retour à une image v2 qui ignorerait puis supprimerait les prêts lors d’une écriture. Les prêts, règlements et exports d’amortissement sont filtrés comme les comptes personnels et communs. Les comptes de remboursement doivent avoir la même visibilité et le même titulaire que le prêt ; les comptes personnels contenant un prêt lié ou ses débits ne peuvent pas être partagés. Confirmation et annulation des règlements sont atomiques avec les opérations générées ; une même échéance ne peut pas être confirmée deux fois par double soumission. Aucun taux courant n’est téléchargé et aucun paiement bancaire réel n’est exécuté.
 
 ```text
 dotnet build CashHarbor.client
