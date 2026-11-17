@@ -1,0 +1,10 @@
+@if (Report.ExpenseCents == 0)
+{
+    <div class="chart-empty"><span>◌</span><strong>Aucune dépense à répartir</strong><p>Les catégories se rempliront avec vos opérations, dans la période et la vue sélectionnées.</p></div>
+}
+else
+{
+    <div class="spending-total"><strong>@FinancePage.Euro(Report.ExpenseCents)</strong><span>@Report.Spending.Count catégorie(s) · @Report.Spending.Sum(s => s.Count) opération(s)</span></div>
+    <div class="spending-ranking">@for (var i = 0; i < Report.Spending.Count; i++) { var item = Report.Spending[i]; var share = item.Cents * 100m / Report.ExpenseCents; <div class="spending-item"><div class="row-between"><span><small class="ranking-number">@((i + 1).ToString("D2"))</small>@item.Name</span><strong>@FinancePage.Euro(item.Cents)</strong></div><meter min="0" max="@Report.ExpenseCents" value="@item.Cents" aria-label="@item.Name"></meter><div class="row-between"><small>@item.Count opération(s)</small><small>@share.ToString("0.0", CultureInfo.GetCultureInfo("fr-FR")) % du total</small></div></div> }</div>
+}
+@code { [Parameter, EditorRequired] public AnalyticsReport Report { get; set; } = default!; }

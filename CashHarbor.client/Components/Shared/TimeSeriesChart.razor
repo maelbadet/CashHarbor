@@ -1,0 +1,44 @@
+@{
+    var axis = ChartAxis.Create(Series.SelectMany(s => s.Values), IncludeZero);
+    var last = Dates.Count - 1;
+    var shown = Series.Take(3).ToArray();
+    var labels = Enumerable.Range(0, Math.Min(Dates.Count, 6)).Select(i => Dates.Count <= 1 ? 0 : (int)decimal.Round(i * (Dates.Count - 1m) / (Math.Min(Dates.Count, 6) - 1), 0)).Distinct().ToArray();
+}
+@if (Dates.Count > 0 && shown.Length > 0)
+{
+    <div class="precision-chart" data-chart data-series0="@shown[0].Name" data-series1="@(shown.Length > 1 ? shown[1].Name : "")" data-series2="@(shown.Length > 2 ? shown[2].Name : "")">
+        <div class="chart-controls"><div class="chart-legend">@for (var i = 0; i < shown.Length; i++) { <label class="chart-series-control @shown[i].CssClass"><input type="checkbox" checked data-series-toggle="@i" /><span class="series-swatch"></span>@shown[i].Name</label> }</div><button type="button" class="chart-export" data-download-chart data-filename="cashharbor-evolution.svg" aria-label="Télécharger ce graphique en SVG">Exporter ↗</button></div>
+        <div class="chart-grid"><div class="chart-y-axis" aria-hidden="true">@foreach (var tick in axis.Ticks().Reverse()) { <span title="@FinancePage.Euro((long)tick)">@ChartGeometry.AxisEuro(tick, axis.Step)</span> }</div><div class="chart-viewport"><svg class="precision-svg" viewBox="98 24 850 224" preserveAspectRatio="none" role="img" aria-label="@Title" tabindex="0" data-chart-svg>
+            <title>@Title</title><desc>Montants exacts au survol ou au toucher. Au clavier : flèches gauche et droite, Début et Fin. Les mêmes valeurs sont disponibles dans le tableau.</desc>
+            @for (var i = 0; i < shown.Length; i++) { <g class="plot-native-legend @shown[i].CssClass" data-chart-series-legend="@i"><rect x="@(98 + i * 260)" y="5" width="7" height="7" /><text x="@(112 + i * 260)" y="13">@shown[i].Name</text></g> }
+            @foreach (var tick in axis.Ticks()) { <g><line x1="98" x2="948" y1="@ChartGeometry.N(axis.Y(tick))" y2="@ChartGeometry.N(axis.Y(tick))" class="@(tick == 0 ? "plot-grid plot-zero" : "plot-grid")" /><text x="81" y="@ChartGeometry.N(axis.Y(tick) + 4)" text-anchor="end" class="plot-label">@ChartGeometry.AxisEuro(tick, axis.Step)</text></g> }
+            @for (var i = 0; i < shown.Length; i++)
+            {
+                var series = shown[i]; var path = ChartGeometry.Line(series, axis, Stepped);
+                <g data-chart-series="@i" class="@series.CssClass">
+                    @if (i == 0 && Dates.Count > 1) { <path d="@(path + $" L {ChartGeometry.N(ChartGeometry.X(last, Dates.Count))} 238 L {ChartGeometry.N(ChartGeometry.X(0, Dates.Count))} 238 Z")" class="plot-area" /> }
+                    <path d="@path" class="plot-series-line" />
+                    <circle cx="@ChartGeometry.N(ChartGeometry.X(last, Dates.Count))" cy="@ChartGeometry.N(axis.Y(series.Values[last]))" r="4" class="plot-endpoint" />
+                </g>
+            }
+            @foreach (var index in labels) { <g><text x="@ChartGeometry.N(ChartGeometry.X(index, Dates.Count))" y="268" text-anchor="middle" class="plot-label">@Dates[index].ToString("dd MMM", Fr)</text></g> }
+            @for (var i = 0; i < Dates.Count; i++)
+            {
+                <g class="chart-datum" data-x="@ChartGeometry.N(ChartGeometry.X(i, Dates.Count))" data-y0="@ChartGeometry.N(axis.Y(shown[0].Values[i]))" data-label="@Dates[i].ToString("dddd dd MMMM yyyy", Fr)" data-value0="@FinancePage.Euro(shown[0].Values[i])" data-value1="@(shown.Length > 1 ? FinancePage.Euro(shown[1].Values[i]) : "")" data-value2="@(shown.Length > 2 ? FinancePage.Euro(shown[2].Values[i]) : "")"><title>@Dates[i].ToString("dd/MM/yyyy") : @string.Join(" · ", shown.Select(s => s.Name + " " + FinancePage.Euro(s.Values[i])))</title></g>
+            }
+            <g class="chart-cursor" hidden><line y1="29" y2="239" class="plot-cursor-line" /><circle r="5" class="plot-cursor-dot" /></g>
+        </svg><div class="chart-tooltip" hidden><strong class="tooltip-date" data-tooltip-date></strong><span data-tooltip-value="0"></span><span data-tooltip-value="1"></span><span data-tooltip-value="2"></span></div></div><div class="chart-x-axis time-axis @(Dates.Count == 1 ? "single-axis" : "")" aria-hidden="true">@for (var i = 0; i < Dates.Count; i++) { <span><small>@(labels.Contains(i) ? Dates[i].ToString("dd MMM", Fr) : "")</small></span> }</div></div>
+        <div class="chart-readout" aria-live="polite"><span data-chart-date>@Dates[last].ToString("dd MMMM yyyy", Fr)</span>@for (var i = 0; i < shown.Length; i++) { <span class="@shown[i].CssClass" data-readout-series="@i"><span class="series-swatch"></span>@shown[i].Name <strong data-readout-value="@i">@FinancePage.Euro(shown[i].Values[last])</strong></span> }</div>
+        <p class="chart-help">Survolez ou touchez le graphique pour lire les montants au centime. @AxisNote</p>
+        <details class="chart-data"><summary>Consulter les valeurs exactes (@Dates.Count points)</summary><div class="table-scroll chart-values"><table><thead><tr><th>Date</th>@foreach (var s in shown) { <th class="number">@s.Name</th> }</tr></thead><tbody>@for (var i = 0; i < Dates.Count; i++) { <tr><td>@Dates[i].ToString("dd/MM/yyyy")</td>@foreach (var s in shown) { <td class="number">@FinancePage.Euro(s.Values[i])</td> }</tr> }</tbody></table></div></details>
+    </div>
+}
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<DateOnly> Dates { get; set; } = [];
+    [Parameter, EditorRequired] public IReadOnlyList<ChartSeries> Series { get; set; } = [];
+    [Parameter] public string Title { get; set; } = "Évolution des soldes";
+    [Parameter] public bool IncludeZero { get; set; }
+    [Parameter] public bool Stepped { get; set; } = true;
+    [Parameter] public string AxisNote { get; set; } = "Échelle ajustée automatiquement, sans lissage des données.";
+    private static readonly CultureInfo Fr = CultureInfo.GetCultureInfo("fr-FR");
+}

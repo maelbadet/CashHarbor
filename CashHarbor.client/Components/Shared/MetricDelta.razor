@@ -1,0 +1,17 @@
+@{
+    var delta = Current - Previous;
+    var positive = Expense ? delta < 0 : delta > 0;
+}
+@if (Previous == 0)
+{
+    <span class="metric-comparison">@(Current == 0 ? "Aucun flux sur les deux périodes" : "Pas de base précédente pour un pourcentage")</span>
+}
+else
+{
+    <span class="metric-comparison @(delta == 0 ? "" : positive ? "delta-positive" : "delta-negative")">@(delta > 0 ? "↗" : delta < 0 ? "↘" : "→") @((delta * 100m / Previous).ToString("+0.0;-0.0;0.0", CultureInfo.GetCultureInfo("fr-FR"))) % <span>vs période précédente</span></span>
+}
+@code {
+    [Parameter] public long Current { get; set; }
+    [Parameter] public long Previous { get; set; }
+    [Parameter] public bool Expense { get; set; }
+}

@@ -1,34 +1,33 @@
-@{
-    var start = new DateOnly(Today.Year, Today.Month, 1).AddMonths(-5);
-    var dates = Enumerable.Range(0, 6).Select(i => start.AddMonths(i + 1).AddDays(-1)).Select(d => d > Today ? Today : d).ToArray();
-    var accounts = Workspace.Accounts.Where(a => AccountId == null || a.Id == AccountId).ToArray();
-    var values = dates.Select(d => (Date: d,
-        Personal: accounts.Where(a => a.Visibility == AccountVisibility.Personal).Sum(a => Workspace.Balance(a.Id, d)),
-        Joint: accounts.Where(a => a.Visibility == AccountVisibility.Joint).Sum(a => Workspace.Balance(a.Id, d)))).ToArray();
-    var min = Math.Min(0m, values.Min(v => Math.Min(v.Personal, v.Joint)));
-    var max = Math.Max(100m, values.Max(v => Math.Max(v.Personal, v.Joint)));
-    string Y(long value) => N(210m - (value - min) * 180m / (max - min));
-    var personal = string.Join(" ", values.Select((v, i) => $"{75 + i * 98},{Y(v.Personal)}"));
-    var joint = string.Join(" ", values.Select((v, i) => $"{75 + i * 98},{Y(v.Joint)}"));
-}
-<div class="legend balance-legend"><span class="legend-expense">Personnel</span><span class="legend-income">Commun</span></div>
-<svg class="cashflow balance-chart" viewBox="0 0 620 265" role="img" aria-label="Évolution des soldes personnels et communs visibles sur six mois">
-    <line x1="70" y1="30" x2="580" y2="30" class="chart-line" /><line x1="70" y1="120" x2="580" y2="120" class="chart-line" /><line x1="70" y1="210" x2="580" y2="210" class="chart-line" />
-    <g><text x="4" y="34">@FinancePage.Euro((long)max)</text><text x="4" y="214">@FinancePage.Euro((long)min)</text></g>
-    <polyline points="@personal" class="balance-personal" /><polyline points="@joint" class="balance-joint" />
-    @for (var i = 0; i < values.Length; i++)
+﻿@{
+    var report = Report ?? FinancialAnalytics.Build(Workspace, new(new DateOnly(Today.Year, Today.Month, 1).AddMonths(-5), Today, AccountId: AccountId), Today);
+    var history = report.History.Where(p => p.TrackedAccounts > 0).ToArray();
+    var series = new List<ChartSeries>();
+    if (history.Length > 0)
     {
-        var v = values[i];
-        <circle cx="@(75 + i * 98)" cy="@Y(v.Personal)" r="4" class="balance-personal-dot"><title>@v.Date.ToString("dd/MM/yyyy") · personnel @FinancePage.Euro(v.Personal)</title></circle>
-        <circle cx="@(75 + i * 98)" cy="@Y(v.Joint)" r="4" class="balance-joint-dot"><title>@v.Date.ToString("dd/MM/yyyy") · commun @FinancePage.Euro(v.Joint)</title></circle>
-        <g><text x="@(75 + i * 98)" y="245" text-anchor="middle">@v.Date.ToString("MMM", CultureInfo.GetCultureInfo("fr-FR"))</text></g>
+        series.Add(new(report.Accounts.Count == 1 ? report.Accounts[0].Account.Name : "Total des comptes", history.Select(p => p.TotalCents).ToArray(), "series-total"));
+        if (report.Accounts.Any(p => p.Account.Visibility == AccountVisibility.Personal) && report.Accounts.Any(p => p.Account.Visibility == AccountVisibility.Joint))
+        {
+            series.Add(new("Personnel", history.Select(p => p.PersonalCents).ToArray(), "series-personal"));
+            series.Add(new("Commun", history.Select(p => p.JointCents).ToArray(), "series-joint"));
+        }
     }
-</svg>
-<p class="fine">Soldes reconstruits à partir des soldes initiaux et des opérations saisies, au dernier jour de chaque mois et aujourd’hui. Aucun compte personnel de l’autre utilisateur n’est inclus.</p>
-<details class="chart-data"><summary>Lire les soldes du graphique</summary><div class="table-scroll"><table><thead><tr><th>Date</th><th>Personnel</th><th>Commun</th></tr></thead><tbody>@foreach (var v in values) { <tr><td>@v.Date.ToString("dd/MM/yyyy")</td><td>@FinancePage.Euro(v.Personal)</td><td>@FinancePage.Euro(v.Joint)</td></tr> }</tbody></table></div></details>
+}
+@if (history.Length == 0)
+{
+    <div class="chart-empty"><span>⌁</span><strong>Aucun historique disponible</strong><p>Les soldes apparaîtront à partir de leur date de départ renseignée.</p></div>
+}
+else
+{
+    <TimeSeriesChart Dates="history.Select(p => p.Date).ToArray()" Series="series" Title="Soldes quotidiens des comptes sélectionnés" />
+    <p class="data-method">Soldes en fin de journée, calculés au centime depuis vos soldes initiaux et vos opérations. Virements et valorisations sont inclus dans les soldes ; ce graphique ne mesure pas un rendement.</p>
+    @if (history.Any(p => p.TrackedAccounts < p.SelectedAccounts))
+    {
+        <p class="coverage-note">Historique partiel avant certaines dates de départ : seuls les comptes déjà renseignés sont inclus à chaque date. L’ajout d’un solde initial peut créer un saut dans la courbe.</p>
+    }
+}
 @code {
     [Parameter, EditorRequired] public Workspace Workspace { get; set; } = default!;
     [Parameter] public DateOnly Today { get; set; }
     [Parameter] public Guid? AccountId { get; set; }
-    private static string N(decimal value) => value.ToString("0.##", CultureInfo.InvariantCulture);
+    [Parameter] public AnalyticsReport? Report { get; set; }
 }

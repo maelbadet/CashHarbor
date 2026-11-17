@@ -1,5 +1,7 @@
 # CashHarbor
 
+Le [guide du tableau de bord](docs/DASHBOARD.md) décrit les graphiques, les filtres et la mise à jour Docker.
+
 Application privée .NET 10 pour un foyer de deux personnes. Interface française responsive dans le thème demandé : noir #101010, panneaux #1a1a1a, rouge #ef4444 et Segoe UI / Inter / sans-serif.
 
 ## Fonctionnalités
@@ -23,7 +25,7 @@ Le stockage reste local au conteneur de l’application : SQLite écrit dans `/d
 - **Domain** : modèle métier et valeurs monétaires en centimes.
 - **Application** : cas d’usage, validations et interfaces des adaptateurs.
 - **Infra** : EF Core / SQLite, chiffrement, accès utilisateurs et TOTP.
-- **client** : hôte ASP.NET Core et pages Blazor rendues sur le serveur, sans circuit interactif ni dépendance JavaScript.
+- **client** : hôte ASP.NET Core et pages Blazor rendues sur le serveur, sans circuit Blazor interactif. Un petit module JavaScript local enrichit les graphiques ; les calculs et les droits restent côté serveur.
 - **Tests** : suites exécutables métier, stockage et parcours HTTP sur serveur HTTPS temporaire.
 - **api** : adaptateur réservé, sans API financière. Ne pas le démarrer pour utiliser l’application.
 

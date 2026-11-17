@@ -18,5 +18,5 @@
             <div class="sidebar-bottom"><span class="private-dot">Espace privé · 2 personnes</span><p>Un cap commun.<br />Des finances plus claires.</p><form method="post" action="/auth/logout"><AntiforgeryToken /><button class="logout" type="submit">Se déconnecter ↗</button></form></div>
         </aside>
     </Authorized></AuthorizeView>
-    <main id="content" class="main">@Body<footer>CashHarbor <span>Conçu pour votre quotidien, par CWC.</span></footer></main>
+    <main id="content" class="main"><AuthorizeView><Authorized><div class="workspace-topbar"><span>CASHHARBOR <span class="topbar-separator">/</span> ESPACE FINANCIER</span><div><span class="private-dot">Accès privé</span><a href="/parametres">Paramètres ↗</a></div></div></Authorized></AuthorizeView>@Body<footer>CashHarbor <span>Conçu pour votre quotidien, par CWC.</span></footer></main>
 </div>

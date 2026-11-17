@@ -27,3 +27,7 @@ Le module de prêts ajoute `Loan`, `LoanPayment` et `LoanInstallment` dans Domai
 Les tables sont initialisées avec EnsureCreated et marquées PRAGMA user_version=4. La transition depuis v1, v2 ou v3 crée une sauvegarde et interdit aux anciennes images de rouvrir des données privées, d’effacer des prêts inconnus de leur modèle ou de traiter les paiements annuels comme mensuels. Le classement administratif reste nécessaire pour affecter explicitement les comptes et objectifs historiques v1 à leur titulaire ou au foyer. Les prochaines évolutions de tables devront fournir des migrations explicites ; EnsureCreated ne fait pas de migration. Le format chiffré conserve le purpose CashHarbor.Workspace.v1 pour relire les enveloppes existantes et leurs anciennes clés.
 
 Une seule instance à la fois. La sérialisation en mémoire n’est pas un verrou distribué ; le jeton de concurrence réduit les pertes silencieuses sans permettre un déploiement multi-instance. Les commandes de provisionnement et récupération se lancent service arrêté.
+
+## Rapports financiers
+
+`FinancialAnalytics` construit des rapports en lecture seule depuis la tranche de `Workspace` déjà autorisée. Les calculs restent en centimes dans Application : reconstitution quotidienne des soldes, flux regroupés et comparaison sur une durée identique. Les composants Razor produisent les SVG et tableaux ; `charts.js`, servi localement sous la CSP existante, ajoute le curseur, les légendes et l’export SVG. Aucun changement du schéma v4 ni dépendance externe n’est nécessaire. Voir [le guide](DASHBOARD.md).

@@ -7,11 +7,14 @@
 @if (W != null)
 {
     var selected = Guid.TryParse(AccountFilter, out var aid) ? (Guid?)aid : null;
-    var filtered = W.Transactions.Where(t => selected == null || t.AccountId == selected).Where(t => string.IsNullOrWhiteSpace(Search) || t.Label.Contains(Search, StringComparison.OrdinalIgnoreCase) || t.Category.Contains(Search, StringComparison.OrdinalIgnoreCase));
+    var scopedIds = W.Accounts.Where(a => Scope != "personnel" || a.Visibility == AccountVisibility.Personal).Where(a => Scope != "commun" || a.Visibility == AccountVisibility.Joint).Select(a => a.Id).ToHashSet();
+    var filtered = W.Transactions.Where(t => scopedIds.Contains(t.AccountId) && (selected == null || t.AccountId == selected)).Where(t => string.IsNullOrWhiteSpace(Search) || t.Label.Contains(Search, StringComparison.OrdinalIgnoreCase) || t.Category.Contains(Search, StringComparison.OrdinalIgnoreCase));
+    if (DateOnly.TryParseExact(From, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var from)) filtered = filtered.Where(t => t.Date >= from);
+    if (DateOnly.TryParseExact(To, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var to)) filtered = filtered.Where(t => t.Date <= to);
     if (DateOnly.TryParseExact(Month + "-01", "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var first)) { filtered = filtered.Where(t => t.Date.Year == first.Year && t.Date.Month == first.Month); }
     var list = filtered.OrderByDescending(t => t.Date).ThenByDescending(t => t.Id).ToArray();
     var pages = Math.Max(1, (list.Length + 29) / 30); var current = Math.Clamp(Page, 1, pages);
-    <section class="panel"><form class="filters" method="get" action="/operations"><label>Compte<select name="compte"><option value="">Tous les comptes</option>@foreach (var a in W.Accounts) { <option value="@a.Id" selected="@(selected == a.Id)">@a.Name</option> }</select></label><label>Mois<input type="month" name="mois" value="@Month" /></label><label>Rechercher<input name="recherche" value="@Search" maxlength="100" placeholder="Libellé, catégorie…" /></label><button class="secondary">Filtrer</button><a href="/operations">Effacer</a></form>
+    <section class="panel"><form class="filters" method="get" action="/operations"><label>Compte<select name="compte"><option value="">Tous les comptes</option>@foreach (var a in W.Accounts) { <option value="@a.Id" selected="@(selected == a.Id)">@a.Name</option> }</select></label><label>Visibilité<select name="vue"><option value="tout" selected="@(Scope != "personnel" && Scope != "commun")">Personnel + commun</option><option value="personnel" selected="@(Scope == "personnel")">Personnel</option><option value="commun" selected="@(Scope == "commun")">Commun</option></select></label><label>Du<input type="date" name="debut" value="@From" /></label><label>Au<input type="date" name="fin" value="@To" /></label><label>Mois<input type="month" name="mois" value="@Month" /></label><label>Rechercher<input name="recherche" value="@Search" maxlength="100" placeholder="Libellé, catégorie…" /></label><button class="secondary">Filtrer</button><a href="/operations">Effacer</a></form>
     <div class="table-scroll"><table><caption>@list.Length opération(s) · page @current / @pages</caption><thead><tr><th>Date</th><th>Opération</th><th>Compte</th><th>Catégorie</th><th class="number">Montant</th><th>Action</th></tr></thead><tbody>
     @foreach (var t in list.Skip((current - 1) * 30).Take(30))
     {
@@ -39,5 +42,8 @@
     [SupplyParameterFromQuery(Name = "mois")] public string? Month { get; set; }
     [SupplyParameterFromQuery(Name = "recherche")] public string? Search { get; set; }
     [SupplyParameterFromQuery(Name = "p")] public int Page { get; set; } = 1;
-    private string PageUrl(int p) => $"/operations?p={p}&compte={Uri.EscapeDataString(AccountFilter ?? "")}&mois={Uri.EscapeDataString(Month ?? "")}&recherche={Uri.EscapeDataString(Search ?? "")}";
+    [SupplyParameterFromQuery(Name = "debut")] public string? From { get; set; }
+    [SupplyParameterFromQuery(Name = "fin")] public string? To { get; set; }
+    [SupplyParameterFromQuery(Name = "vue")] public string? Scope { get; set; }
+    private string PageUrl(int p) => $"/operations?p={p}&compte={Uri.EscapeDataString(AccountFilter ?? "")}&mois={Uri.EscapeDataString(Month ?? "")}&recherche={Uri.EscapeDataString(Search ?? "")}&debut={Uri.EscapeDataString(From ?? "")}&fin={Uri.EscapeDataString(To ?? "")}&vue={Uri.EscapeDataString(Scope ?? "")}";
 }

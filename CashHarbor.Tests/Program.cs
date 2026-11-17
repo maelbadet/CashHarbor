@@ -76,6 +76,7 @@ await Test("Only two provisioned users; reset revokes sessions", async () =>
     Check(!await identity.IsValidAsync(actor, old!.Version), "Reset did not revoke sessions.");
 });
 var today = finance.Today;
+await Test("Exact analytics, scopes, partial periods, grouping and CSV", AnalyticsRegression.Run);
 await finance.AddAccountAsync(actor, "Private Current", "Private Institution", AccountKind.Current, 1000m, today.AddMonths(-3));
 await finance.AddAccountAsync(actor, "Savings", "Bank", AccountKind.Savings, 200m, today.AddMonths(-3));
 var state = await finance.ReadAsync(actor); var a = state.Accounts[0].Id; var b = state.Accounts[1].Id;

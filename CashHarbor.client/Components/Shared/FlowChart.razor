@@ -1,0 +1,38 @@
+@{
+    var axis = ChartAxis.Create(Report.Flows.SelectMany(f => new[] { f.IncomeCents, f.ExpenseCents }), true);
+    var count = Report.Flows.Count;
+    var slot = ChartGeometry.Width / Math.Max(1, count);
+    var bar = Math.Min(19m, slot * .29m);
+    var labels = Enumerable.Range(0, Math.Min(count, 6)).Select(i => count <= 1 ? 0 : (int)decimal.Round(i * (count - 1m) / (Math.Min(count, 6) - 1), 0)).ToHashSet();
+}
+@if (Report.IncomeCents == 0 && Report.ExpenseCents == 0)
+{
+    <div class="chart-empty"><span>↗ ↙</span><strong>Aucun flux sur cette période</strong><p>Les revenus et dépenses apparaîtront après leur saisie. Les virements et ajustements de solde sont exclus.</p></div>
+}
+else
+{
+    <div class="precision-chart flow-chart" data-chart data-series0="Revenus" data-series1="Dépenses" data-series2="Solde des flux">
+        <div class="chart-controls"><div class="chart-legend"><span class="chart-series-control series-income"><span class="series-swatch"></span>Revenus</span><span class="chart-series-control series-expense"><span class="series-swatch"></span>Dépenses</span></div><span class="chart-grain">@GrainLabel</span></div>
+        <div class="chart-grid"><div class="chart-y-axis" aria-hidden="true">@foreach (var tick in axis.Ticks().Reverse()) { <span title="@FinancePage.Euro((long)tick)">@ChartGeometry.AxisEuro(tick, axis.Step)</span> }</div><div class="chart-viewport"><svg class="precision-svg" viewBox="98 24 850 224" preserveAspectRatio="none" role="img" aria-label="Revenus et dépenses de la période avec montants exacts en euros" tabindex="0" data-chart-svg>
+            <title>Revenus et dépenses — @Report.Request.From.ToString("dd/MM/yyyy") au @Report.Request.To.ToString("dd/MM/yyyy")</title>
+            @foreach (var tick in axis.Ticks()) { <g><line x1="98" x2="948" y1="@ChartGeometry.N(axis.Y(tick))" y2="@ChartGeometry.N(axis.Y(tick))" class="plot-grid" /><text x="81" y="@ChartGeometry.N(axis.Y(tick) + 4)" text-anchor="end" class="plot-label">@ChartGeometry.AxisEuro(tick, axis.Step)</text></g> }
+            @for (var i = 0; i < count; i++)
+            {
+                var item = Report.Flows[i]; var center = ChartGeometry.Left + slot * (i + .5m);
+                <rect x="@ChartGeometry.N(center - bar - 2)" y="@ChartGeometry.N(axis.Y(item.IncomeCents))" width="@ChartGeometry.N(bar)" height="@ChartGeometry.N(axis.Y(0) - axis.Y(item.IncomeCents))" rx="2.5" class="plot-bar-income"><title>@Period(item) · revenus @FinancePage.Euro(item.IncomeCents)</title></rect>
+                <rect x="@ChartGeometry.N(center + 2)" y="@ChartGeometry.N(axis.Y(item.ExpenseCents))" width="@ChartGeometry.N(bar)" height="@ChartGeometry.N(axis.Y(0) - axis.Y(item.ExpenseCents))" rx="2.5" class="plot-bar-expense"><title>@Period(item) · dépenses @FinancePage.Euro(item.ExpenseCents)</title></rect>
+                <g class="chart-datum" data-x="@ChartGeometry.N(center)" data-y0="@ChartGeometry.N(axis.Y(item.IncomeCents))" data-label="@Period(item)" data-value0="@FinancePage.Euro(item.IncomeCents)" data-value1="@FinancePage.Euro(item.ExpenseCents)" data-value2="@FinancePage.Euro(item.NetCents)"></g>
+                @if (labels.Contains(i)) { <g><text x="@ChartGeometry.N(center)" y="268" text-anchor="middle" class="plot-label">@item.From.ToString(Report.Grain == AnalyticsGrain.Monthly ? "MMM yy" : "dd/MM", Fr)</text></g> }
+            }
+            <g class="chart-cursor" hidden><line y1="29" y2="239" class="plot-cursor-line" /><circle r="5" class="plot-cursor-dot" /></g>
+        </svg><div class="chart-tooltip" hidden><strong class="tooltip-date" data-tooltip-date></strong><span data-tooltip-value="0"></span><span data-tooltip-value="1"></span><span data-tooltip-value="2"></span></div></div><div class="chart-x-axis flow-axis" aria-hidden="true">@for (var i = 0; i < count; i++) { <span><small>@(labels.Contains(i) ? Report.Flows[i].From.ToString(Report.Grain == AnalyticsGrain.Monthly ? "MMM yy" : "dd/MM", Fr) : "")</small></span> }</div></div>
+        <div class="chart-readout" aria-live="polite"><span data-chart-date>@Period(Report.Flows[^1])</span><span>Revenus <strong data-readout-value="0">@FinancePage.Euro(Report.Flows[^1].IncomeCents)</strong></span><span>Dépenses <strong data-readout-value="1">@FinancePage.Euro(Report.Flows[^1].ExpenseCents)</strong></span><span>Solde <strong data-readout-value="2">@FinancePage.Euro(Report.Flows[^1].NetCents)</strong></span></div>
+        <details class="chart-data"><summary>Consulter les montants par @GrainLabel.ToLowerInvariant()</summary><div class="table-scroll chart-values"><table><thead><tr><th>Période</th><th class="number">Revenus</th><th class="number">Dépenses</th><th class="number">Solde des flux</th></tr></thead><tbody>@foreach (var row in Report.Flows) { <tr><td>@Period(row)</td><td class="number">@FinancePage.Euro(row.IncomeCents)</td><td class="number">@FinancePage.Euro(row.ExpenseCents)</td><td class="number">@FinancePage.Euro(row.NetCents)</td></tr> }</tbody></table></div></details>
+    </div>
+}
+@code {
+    [Parameter, EditorRequired] public AnalyticsReport Report { get; set; } = default!;
+    private static readonly CultureInfo Fr = CultureInfo.GetCultureInfo("fr-FR");
+    private string GrainLabel => Report.Grain switch { AnalyticsGrain.Daily => "Jour", AnalyticsGrain.Weekly => "Semaine", _ => "Mois" };
+    private static string Period(FlowBucket row) => row.From == row.To ? row.From.ToString("dd MMM yyyy", Fr) : row.From.ToString("dd MMM", Fr) + " – " + row.To.ToString("dd MMM yyyy", Fr);
+}

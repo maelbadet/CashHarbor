@@ -1,0 +1,16 @@
+<form class="analytics-toolbar" method="get" action="/" aria-label="Filtres du tableau de bord">
+    <div class="analytics-filter-fields">
+        <label>Période<select name="periode" data-period-select><option value="1m" selected="@(Period == "1m")">Ce mois</option><option value="3m" selected="@(Period == "3m")">3 mois</option><option value="6m" selected="@(Period == "6m")">6 mois</option><option value="12m" selected="@(Period == "12m")">12 mois</option><option value="annee" selected="@(Period == "annee")">Année en cours</option><option value="custom" selected="@(Period == "custom")">Personnalisée</option></select></label>
+        <label>Visibilité<select name="vue"><option value="tout" selected="@(Request.Scope == AnalyticsScope.All)">Personnel + commun</option><option value="personnel" selected="@(Request.Scope == AnalyticsScope.Personal)">Personnel uniquement</option><option value="commun" selected="@(Request.Scope == AnalyticsScope.Joint)">Commun uniquement</option></select></label>
+        <label>Compte<select name="compte"><option value="">Tous les comptes de la vue</option>@foreach (var a in Accounts.Where(a => FinancialAnalytics.InScope(a.Visibility, Request.Scope))) { <option value="@a.Id" selected="@(Request.AccountId == a.Id)">@a.Name · @(a.Visibility == AccountVisibility.Joint ? "commun" : "personnel")</option> }</select></label>
+        <label>Regrouper les flux<select name="precision"><option value="auto" selected="@(Request.Grain == AnalyticsGrain.Auto)">Automatique</option><option value="jour" selected="@(Request.Grain == AnalyticsGrain.Daily)">Par jour</option><option value="semaine" selected="@(Request.Grain == AnalyticsGrain.Weekly)">Par semaine</option><option value="mois" selected="@(Request.Grain == AnalyticsGrain.Monthly)">Par mois</option></select></label>
+        <button type="submit" class="secondary">Appliquer ↗</button>
+    </div>
+    <div class="analytics-custom-dates" data-custom-dates hidden="@(Period != "custom")"><label>Du<input name="debut" type="date" value="@FinancePage.Iso(Request.From)" min="1900-01-01" max="@FinancePage.Iso(Today)" required="@(Period == "custom")" /></label><label>Au<input name="fin" type="date" value="@FinancePage.Iso(Request.To)" min="1900-01-01" max="@FinancePage.Iso(Today)" required="@(Period == "custom")" /></label><small>Les dates sont incluses. Les soldes restent quotidiens, quel que soit le regroupement des flux.</small></div>
+</form>
+@code {
+    [Parameter, EditorRequired] public AnalyticsRequest Request { get; set; } = default!;
+    [Parameter] public string Period { get; set; } = "6m";
+    [Parameter] public IReadOnlyList<FinancialAccount> Accounts { get; set; } = [];
+    [Parameter] public DateOnly Today { get; set; }
+}

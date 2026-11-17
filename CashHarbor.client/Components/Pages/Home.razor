@@ -4,47 +4,73 @@
 <PageTitle>Vue d’ensemble · CashHarbor</PageTitle>
 @if (W != null)
 {
-    var month = new DateOnly(Today.Year, Today.Month, 1);
-    var entries = W.Transactions.Where(t => t.Date >= month && t.Kind is EntryKind.Expense or EntryKind.Income).ToArray();
-    var income = entries.Where(t => t.Cents > 0).Sum(t => t.Cents);
-    var expense = -entries.Where(t => t.Cents < 0).Sum(t => t.Cents);
-    var total = W.Accounts.Sum(a => W.Balance(a.Id));
-    var debt = W.Loans.Sum(l => LoanCalculator.Remaining(l, W.LoanPayments));
-    var savings = W.Accounts.Where(a => a.Kind == AccountKind.Savings).Sum(a => W.Balance(a.Id));
-    <header class="page-header"><div><span class="eyebrow">@W.Name · @Today.ToString("MMMM yyyy", CultureInfo.GetCultureInfo("fr-FR"))</span><h1>Un cap sur vos finances<span class="accent">.</span></h1><p>Vos comptes réunis. Vos projets en vue.</p></div><a class="button" href="/operations#ajouter">Ajouter une opération ↗</a></header>
+    <header class="page-header dashboard-heading"><div><span class="eyebrow">@W.Name / TABLEAU DE BORD</span><h1>Vue d’ensemble<span class="accent">.</span></h1><p>Une lecture précise de vos comptes, de vos flux et de vos engagements.</p></div><div class="heading-actions"><a class="button secondary" href="/comptes#ajouter">Ajouter un compte</a><a class="button" href="/operations#ajouter">Nouvelle opération <span>＋</span></a></div></header>
     <Notice />
-    <section class="stats" aria-label="Résumé du foyer">
-        <article class="stat dark"><span>Solde net suivi</span><strong>@Euro(total - debt)</strong><small>Comptes moins capital restant des prêts</small></article>
-        <article class="stat"><span>Revenus du mois</span><strong>@Euro(income)</strong><small>Hors virements internes</small></article>
-        <article class="stat"><span>Dépenses du mois</span><strong>@Euro(expense)</strong><small>Du @month.ToString("dd MMM", CultureInfo.GetCultureInfo("fr-FR")) à aujourd’hui</small></article>
-        <article class="stat"><span>Épargne suivie</span><strong>@Euro(savings)</strong><small>Sur vos comptes d’épargne</small></article>
-    </section>
-    @if (W.Loans.Count > 0)
+    <AnalyticsToolbar Request="FormRequest" Period="@Period" Accounts="W.Accounts" Today="Today" />
+    @if (FilterError != null) { <div class="notice error" role="alert">@FilterError</div> }
+    @if (Report is { } report)
     {
-        <section class="panel loan-summary"><div><span class="eyebrow">VOS ENGAGEMENTS VISIBLES</span><h2>@Euro(debt) de capital restant dû</h2><p class="muted">Pour @Euro(total) de soldes de comptes suivis. Les intérêts futurs et la valeur des biens immobiliers ne sont pas inclus dans le solde net.</p></div><a class="button secondary" href="/prets">Suivre mes prêts ↗</a></section>
+        var request = report.Request;
+        var scopeName = request.Scope switch { AnalyticsScope.Personal => "Personnel", AnalyticsScope.Joint => "Commun", _ => "Personnel + commun" };
+        var accountNames = report.Accounts.ToDictionary(a => a.Account.Id, a => a.Account.Name);
+        var currentLoans = W.Loans.Where(l => FinancialAnalytics.InScope(l.Visibility, request.Scope)).ToArray();
+        var currentAssets = report.Accounts.Sum(a => W.Balance(a.Account.Id));
+        var currentDebt = currentLoans.Sum(l => LoanCalculator.Remaining(l, W.LoanPayments));
+        <div class="dashboard-period"><div><span class="view-badge">@scopeName</span><span>@request.From.ToString("dd MMM yyyy", Fr) <span class="muted">→</span> @request.To.ToString("dd MMM yyyy", Fr)</span><span class="muted">@report.Accounts.Count compte(s)</span></div><a href="/export/analytics.csv?@AnalyticsFilters.Query(request)" class="text-link">Exporter les données · CSV ↗</a></div>
+        <section class="stats dashboard-stats" aria-label="Indicateurs de la période sélectionnée">
+            <article class="stat dark"><span>Soldes suivis au @request.To.ToString("dd/MM")</span><strong>@Euro(report.ClosingCents)</strong><span class="metric-comparison">@(report.ChangeCents >= 0 ? "+" : "")@Euro(report.ChangeCents) <span>de variation comptable</span></span></article>
+            <article class="stat"><span>Revenus sur la période</span><strong>@Euro(report.IncomeCents)</strong><MetricDelta Current="report.IncomeCents" Previous="report.PreviousIncomeCents" /></article>
+            <article class="stat"><span>Dépenses sur la période</span><strong>@Euro(report.ExpenseCents)</strong><MetricDelta Current="report.ExpenseCents" Previous="report.PreviousExpenseCents" Expense="true" /></article>
+            <article class="stat"><span>Solde des flux</span><strong class="@(report.NetFlowCents >= 0 ? "positive" : "negative")">@Euro(report.NetFlowCents)</strong><span class="metric-comparison">@(report.NetFlowRate == null ? "Revenus − dépenses" : report.NetFlowRate.Value.ToString("0.0", Fr) + " % — ratio solde / revenus")</span></article>
+        </section>
+        <p class="comparison-context">Comparaison des flux avec la période du @report.PreviousFrom.ToString("dd/MM/yyyy") au @report.PreviousTo.ToString("dd/MM/yyyy"), de même durée. Virements et ajustements exclus des revenus et dépenses.</p>
+        @if (report.Accounts.Count == 0)
+        {
+            <section class="panel onboarding-empty"><span class="eyebrow">VOTRE PREMIER REPÈRE</span><h2>Ajoutez un compte pour commencer.</h2><p>Vos graphiques utiliseront uniquement vos données saisies. Vous pourrez suivre séparément vos comptes personnels et vos comptes communs.</p><a class="button" href="/comptes#ajouter">Ajouter mon premier compte ↗</a></section>
+        }
+        else
+        {
+            <section class="panel dashboard-history"><div class="section-heading"><div><span class="eyebrow">HISTORIQUE QUOTIDIEN</span><h2>Évolution des soldes</h2><p class="panel-description">Chaque journée et chaque montant sont consultables.</p></div><span class="data-badge">Précision au centime</span></div><BalanceHistoryChart Workspace="W" Today="Today" Report="report" /></section>
+            <div class="analytics-grid"><section class="panel"><div class="section-heading"><div><span class="eyebrow">REVENUS &amp; DÉPENSES</span><h2>Les flux de la période</h2></div></div><CashFlowChart Workspace="W" Today="Today" Report="report" /><p class="data-method">Les factures annuelles sont comptées intégralement à leur date de paiement, sans répartition artificielle entre les mois.</p></section><section class="panel"><div class="section-heading"><div><span class="eyebrow">RÉPARTITION DES SORTIES</span><h2>Vos dépenses par catégorie</h2></div></div><SpendingBreakdown Report="report" /></section></div>
+            <section class="panel account-positions"><div class="section-heading"><div><span class="eyebrow">LE DÉTAIL QUI COMPTE</span><h2>Position de chaque compte</h2></div><a href="/comptes" class="text-link">Gérer les comptes ↗</a></div><div class="table-scroll"><table><thead><tr><th>Compte</th><th>Visibilité</th><th class="number">Solde au @request.To.ToString("dd/MM")</th><th class="number">Variation sur la période</th><th>Opérations</th></tr></thead><tbody>@foreach (var p in report.Accounts.OrderByDescending(a => a.ClosingCents)) { <tr><td><strong>@p.Account.Name</strong><small>@p.Account.Institution · @(string.IsNullOrEmpty(p.Account.Product) ? Kind(p.Account.Kind) : p.Account.Product)</small></td><td><span class="scope-pill">@(p.Account.Visibility == AccountVisibility.Joint ? "Commun" : "Personnel")</span></td><td class="number"><strong>@(p.Account.OpeningDate > request.To ? "Non renseigné" : Euro(p.ClosingCents))</strong></td><td class="number">@(p.Account.OpeningDate >= request.From ? "Solde initial dans la période" : (p.ChangeCents > 0 ? "+" : "") + Euro(p.ChangeCents))</td><td><a href="/operations?compte=@p.Account.Id&debut=@Iso(request.From)&fin=@Iso(request.To)" class="text-link">Consulter ↗</a></td></tr> }</tbody><tfoot><tr><td colspan="2">Total des soldes renseignés</td><td class="number">@Euro(report.ClosingCents)</td><td class="number">@(report.ChangeCents > 0 ? "+" : "")@Euro(report.ChangeCents)</td><td></td></tr></tfoot></table></div><p class="data-method">La variation des soldes inclut les virements, les valorisations et les soldes initiaux ajoutés pendant la période. Elle peut différer du solde des flux.</p></section>
+        }
+        @if (request.AccountId == null && currentLoans.Length > 0)
+        {
+            <section class="debt-strip panel"><div><span class="eyebrow">SITUATION ACTUELLE · @Today.ToString("dd/MM/yyyy")</span><h2>Comptes et engagements</h2><a href="/prets" class="text-link">Suivre les prêts ↗</a></div><div><small>Soldes des comptes</small><strong>@Euro(currentAssets)</strong></div><div><small>Capital restant dû</small><strong>@Euro(currentDebt)</strong></div><div class="debt-net"><small>Solde net suivi</small><strong>@Euro(currentAssets - currentDebt)</strong></div><p>Situation actuelle de la vue sélectionnée, indépendante de la période historique. Valeur des biens immobiliers et intérêts futurs non inclus.</p></section>
+        }
+        <div class="dashboard-bottom-grid">
+            <section class="panel"><div class="section-heading"><div><span class="eyebrow">DANS LA PÉRIODE SÉLECTIONNÉE</span><h2>Dernières opérations</h2></div><a class="text-link" href="/operations?debut=@Iso(request.From)&fin=@Iso(request.To)&compte=@request.AccountId&vue=@AnalyticsFilters.Scope(request.Scope)">Voir tout ↗</a></div>
+            @if (report.Transactions.Count == 0) { <div class="compact-empty">Aucune opération sur cette période.</div> }
+            else { <div class="professional-movements">@foreach (var t in report.Transactions.Take(6)) { <a class="professional-movement" href="/operations?compte=@t.AccountId&debut=@Iso(t.Date)&fin=@Iso(t.Date)"><span class="movement-icon">@(t.Kind == EntryKind.Transfer ? "⇄" : t.Kind == EntryKind.Adjustment ? "≈" : t.Cents > 0 ? "↙" : "↗")</span><span class="movement-label"><strong>@t.Label</strong><small>@accountNames[t.AccountId] · @t.Date.ToString("dd MMM", Fr)</small></span><span class="movement-amount @(t.Kind == EntryKind.Income ? "positive" : "")">@(t.Cents > 0 ? "+" : "")@Euro(t.Cents)<small>@(t.Kind == EntryKind.Adjustment ? "Ajustement" : t.Kind == EntryKind.Transfer ? "Virement" : t.Category)</small></span></a> }</div> }
+            </section>
+            <section class="panel"><div class="section-heading"><div><span class="eyebrow">SITUATION ACTUELLE</span><h2>À venir ou à confirmer</h2></div><a class="text-link" href="/echeances">Échéances ↗</a></div>
+            @if (report.Upcoming.Count == 0) { <div class="compact-empty">Aucune échéance récurrente ou de prêt dans cette vue.</div> }
+            else { <div class="upcoming-list">@foreach (var item in report.Upcoming) { var late = item.Date < Today; <a href="@item.Url" class="upcoming-item"><span class="upcoming-date"><strong>@item.Date.Day.ToString("D2")</strong><small>@item.Date.ToString("MMM", Fr)</small></span><span class="movement-label"><strong>@item.Label</strong><small>@item.AccountName · @(late ? "À confirmer" : item.Date == Today ? "Aujourd’hui" : item.Date.ToString("dd/MM/yyyy"))</small></span><span class="movement-amount">@Euro(item.Cents)<small class="@(late ? "negative" : "")">@(item.IsLoan ? "Prêt" : "Récurrence")</small></span></a> }</div> }
+            </section>
+        </div>
+        var goals = W.Goals.Where(g => FinancialAnalytics.InScope(g.Visibility, request.Scope)).Take(3).ToArray();
+        @if (request.AccountId == null && goals.Length > 0)
+        {
+            <section class="panel dashboard-goals"><div class="section-heading"><div><span class="eyebrow">VOS PROJETS</span><h2>Objectifs de la vue @scopeName.ToLowerInvariant()</h2></div><a class="text-link" href="/objectifs">Tous les objectifs ↗</a></div><div class="dashboard-goal-grid">@foreach (var g in goals) { <a href="/objectifs" class="dashboard-goal"><span class="scope-pill">@(g.Visibility == AccountVisibility.Joint ? "Commun" : "Personnel")</span><h3>@g.Name</h3><div class="row-between"><strong>@Euro(g.SavedCents)</strong><small>sur @Euro(g.TargetCents)</small></div><meter min="0" max="@g.TargetCents" value="@g.SavedCents" aria-label="@g.Name"></meter><small>@((g.SavedCents * 100m / g.TargetCents).ToString("0", Fr)) % · montants déclarés</small></a> }</div></section>
+        }
     }
-    <section class="ownership-summary" aria-label="Répartition par visibilité">
-        <a class="panel scope-card" href="/comptes?vue=personnel"><span class="eyebrow">MON ESPACE PERSONNEL</span><h2>Mes comptes</h2><strong>@Euro(W.Accounts.Where(a => a.Visibility == AccountVisibility.Personal).Sum(a => W.Balance(a.Id)))</strong><p>Vous seul pouvez voir vos comptes et votre épargne personnels. ↗</p></a>
-        <a class="panel scope-card" href="/comptes?vue=commun"><span class="eyebrow">NOTRE ESPACE COMMUN</span><h2>Nos comptes communs</h2><strong>@Euro(W.Accounts.Where(a => a.Visibility == AccountVisibility.Joint).Sum(a => W.Balance(a.Id)))</strong><p>Comptes joints et épargne partagée, visibles par vous deux. ↗</p></a>
-    </section>
-    <section class="panel"><div class="section-heading"><div><span class="eyebrow">LE PATRIMOINE DANS LE TEMPS</span><h2>L’évolution de vos comptes</h2></div><a href="/comptes?type=epargne">Suivre mon épargne ↗</a></div><BalanceHistoryChart Workspace="W" Today="Today" /></section>
-    @if (W.Accounts.Count == 0)
-    { <section class="welcome panel"><span class="eyebrow">ON PREND LE LARGE ?</span><h2>Votre première étape : un compte.</h2><p>Ajoutez votre compte courant et son solde de départ. Vos graphiques prendront forme au fil des opérations.</p><a class="button" href="/comptes#ajouter">Ajouter notre premier compte ↗</a><span class="welcome-mark" aria-hidden="true">↗</span></section> }
-    <div class="grid-two">
-        <section class="panel"><div class="section-heading"><div><span class="eyebrow">LES SIX DERNIERS MOIS</span><h2>Votre rythme financier</h2></div><div class="legend"><span class="legend-income">Revenus</span><span class="legend-expense">Dépenses</span></div></div><CashFlowChart Workspace="W" Today="Today" /></section>
-        <section class="panel"><div class="section-heading"><div><span class="eyebrow">CE MOIS-CI</span><h2>Où va votre argent ?</h2></div></div>
-        @if (expense == 0) { <div class="empty"><span class="empty-symbol">◌</span><p>Vos dépenses apparaîtront ici,<br />catégorie par catégorie.</p></div> }
-        else { <div class="category-list">@foreach (var category in entries.Where(t => t.Cents < 0).GroupBy(t => t.Category).OrderByDescending(g => -g.Sum(t => t.Cents))) { var value = -category.Sum(t => t.Cents); <div><div class="row-between"><span>@category.Key</span><strong>@Euro(value)</strong></div><meter min="0" max="@expense" value="@value" aria-label="@category.Key"></meter><small>@((value * 100m / expense).ToString("0")) % des dépenses</small></div> }</div> }
-        </section>
-    </div>
-    <div class="grid-two">
-        <section class="panel"><div class="section-heading"><div><span class="eyebrow">AU QUOTIDIEN</span><h2>Derniers mouvements</h2></div><a href="/operations">Tout voir ↗</a></div>
-        @if (W.Transactions.Count == 0) { <p class="empty">Aucune opération pour le moment.</p> }
-        else { <div class="movements">@foreach (var t in W.Transactions.OrderByDescending(t => t.Date).Take(5)) { <div class="movement"><span class="movement-icon">@(t.Cents > 0 ? "↙" : "↗")</span><div><strong>@t.Label</strong><small>@W.Accounts.Single(a => a.Id == t.AccountId).Name · @t.Date.ToString("dd/MM")</small></div><strong class="@(t.Cents > 0 ? "positive" : "")">@(t.Cents > 0 ? "+" : "")@Euro(t.Cents)</strong></div> }</div> }
-        </section>
-        <section class="panel goal-preview"><div class="section-heading"><div><span class="eyebrow">ENVIE D’ALLER PLUS LOIN</span><h2>Vos projets, petit à petit.</h2></div><a href="/objectifs">Voir les objectifs ↗</a></div>
-        @if (W.Goals.Count == 0) { <p>Un voyage, un nouveau départ ou simplement plus de tranquillité. Donnez un nom à votre prochain projet.</p><a class="button secondary" href="/objectifs#ajouter">Créer un objectif</a> }
-        else { @foreach (var g in W.Goals.Take(3)) { <div class="goal-mini"><div class="row-between"><strong>@g.Name</strong><span>@Euro(g.SavedCents) / @Euro(g.TargetCents)</span></div><meter min="0" max="@g.TargetCents" value="@g.SavedCents" aria-label="@g.Name"></meter></div> } }
-        </section>
-    </div>
+}
+@code {
+    private AnalyticsReport? Report;
+    private AnalyticsRequest FormRequest = default!;
+    private string? FilterError;
+    private string Period = "6m";
+    private static readonly CultureInfo Fr = CultureInfo.GetCultureInfo("fr-FR");
+    protected override async Task OnInitializedAsync()
+    {
+        await base.OnInitializedAsync();
+        FormRequest = new(new DateOnly(Today.Year, Today.Month, 1).AddMonths(-5), Today);
+        try
+        {
+            FormRequest = AnalyticsFilters.Parse(HttpContext.HttpContext!.Request.Query, Today);
+            Period = HttpContext.HttpContext.Request.Query["periode"].FirstOrDefault() ?? "6m";
+            Report = FinancialAnalytics.Build(W!, FormRequest, Today);
+        }
+        catch (RuleException e) { FilterError = e.Message; }
+    }
 }

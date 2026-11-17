@@ -26,6 +26,13 @@ internal static class HttpAccessRegression
             Check(json.RootElement.GetProperty("Accounts").EnumerateArray().Any(a => a.GetProperty("Id").GetGuid() == sharedAccount), "JSON export omits joint account.");
         }
         var token = Token(await second.GetStringAsync("/comptes"));
+        foreach (var route in new[] { "/export/analytics.csv?compte=" + firstAccount, "/export/analytics.csv?periode=custom&debut=invalid&fin=invalid" })
+            Check((await second.GetAsync(route)).StatusCode == HttpStatusCode.BadRequest, "Analytics accepted hidden account or invalid dates.");
+        var analyticsState = JsonSerializer.Deserialize<Workspace>(await second.GetStringAsync("/export/json"))!;
+        var date = DateOnly.FromDateTime(DateTime.Today);
+        var commonReport = CashHarbor.Application.FinancialAnalytics.Build(analyticsState, new(date, date, CashHarbor.Application.AnalyticsScope.Joint), date);
+        var csv = await second.GetStringAsync($"/export/analytics.csv?periode=custom&debut={date:yyyy-MM-dd}&fin={date:yyyy-MM-dd}&vue=commun");
+        Check(csv == CashHarbor.Application.FinancialAnalytics.ExportCsv(commonReport), "Analytics HTTP export differs from authorized common ledger.");
         foreach (var action in new[] { "account-edit", "account-share", "account-balance", "account-delete" })
         {
             response = await second.PostAsync("/actions/" + action, Form(new() { ["__RequestVerificationToken"] = token, ["id"] = firstAccount.ToString(), ["name"] = "FORGED", ["institution"] = "FORGED", ["confirm"] = "on", ["balance"] = "0", ["date"] = DateTime.Today.ToString("yyyy-MM-dd") }));

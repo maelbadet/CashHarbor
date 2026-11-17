@@ -1,0 +1,8 @@
+@{
+    var rows = LoanCalculator.Schedule(Loan);
+    var dates = new[] { Loan.FirstDueDate.AddMonths(-1) }.Concat(rows.Select(r => r.DueDate)).ToArray();
+    var values = new[] { Loan.PrincipalCents }.Concat(rows.Select(r => r.RemainingCents)).ToArray();
+    var series = new[] { new ChartSeries("Capital restant prévu", values, "series-total") };
+}
+<TimeSeriesChart Dates="dates" Series="series" Title="Projection du capital restant dû au taux nominal fixe saisi" IncludeZero="true" Stepped="false" AxisNote="Projection théorique de l’échéancier, sans confirmation automatique de règlement." />
+@code { [Parameter, EditorRequired] public Loan Loan { get; set; } = default!; }

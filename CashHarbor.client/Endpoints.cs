@@ -7,6 +7,7 @@ using CashHarbor.Domain;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using CashHarbor.client.Components.Shared;
 namespace CashHarbor.client;
 public static class Endpoints
 {
@@ -29,6 +30,16 @@ public static class Endpoints
             await http.SignOutAsync(); return Results.LocalRedirect("/connexion");
         }).RequireAuthorization();
         app.MapPost("/actions/{action}", WriteAsync).RequireAuthorization().RequireRateLimiting("write");
+        app.MapGet("/export/analytics.csv", async (HttpContext http, FinanceService finance) =>
+        {
+            try
+            {
+                var workspace = await finance.ReadAsync(Guid.Parse(http.User.FindFirstValue(ClaimTypes.NameIdentifier)!));
+                var report = FinancialAnalytics.Build(workspace, AnalyticsFilters.Parse(http.Request.Query, finance.Today), finance.Today);
+                return Results.File(Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(FinancialAnalytics.ExportCsv(report))).ToArray(), "text/csv; charset=utf-8", "cashharbor-analyse.csv");
+            }
+            catch (RuleException e) { return Results.BadRequest(e.Message); }
+        }).RequireAuthorization().RequireRateLimiting("write");
         app.MapGet("/export/loan/{id:guid}/csv", async (Guid id, HttpContext http, FinanceService finance) =>
         {
             var w = await finance.ReadAsync(Guid.Parse(http.User.FindFirstValue(ClaimTypes.NameIdentifier)!));

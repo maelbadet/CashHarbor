@@ -43,6 +43,33 @@ try {
       if (route === '/comptes?type=epargne') {
         await send('Runtime.evaluate', { expression: 'document.querySelector(".account-card details").open = true' });
       }
+      if (route === '/') {
+        const interaction = await send('Runtime.evaluate', { expression: `(() => {
+          if(document.querySelector('[data-period-select]').value !== '6m') throw new Error('Default period mismatch');
+          const chart=document.querySelector('[data-chart].charts-ready');
+          if(!chart) throw new Error('Chart enhancement missing');
+          const svg=chart.querySelector('[data-chart-svg]'), points=[...chart.querySelectorAll('.chart-datum')];
+          svg.dispatchEvent(new KeyboardEvent('keydown',{key:'Home',bubbles:true}));
+          if(chart.querySelector('[data-chart-date]').textContent!==points[0].dataset.label) throw new Error('Keyboard cursor mismatch');
+          svg.dispatchEvent(new KeyboardEvent('keydown',{key:'End',bubbles:true}));
+          if(chart.querySelector('[data-readout-value="0"]').textContent!==points.at(-1).dataset.value0) throw new Error('Exact value mismatch');
+          const rect=svg.getBoundingClientRect();
+          svg.dispatchEvent(new PointerEvent('pointerdown',{clientX:rect.left,clientY:rect.top+50,pointerType:'touch',bubbles:true}));
+          if(chart.querySelector('[data-chart-date]').textContent!==points[0].dataset.label) throw new Error('Touch cursor mismatch');
+          const toggles=[...chart.querySelectorAll('[data-series-toggle]')];
+          if(toggles.length>1){toggles[0].click();if(!chart.querySelector('[data-chart-series="0"]').hasAttribute('hidden'))throw new Error('Series toggle failed');toggles[0].click();}
+          const select=document.querySelector('[data-period-select]');select.value='custom';select.dispatchEvent(new Event('change'));if(document.querySelector('[data-custom-dates]').hidden)throw new Error('Custom dates missing');select.value='6m';select.dispatchEvent(new Event('change'));
+          svg.dispatchEvent(new Event('pointerleave'));return true;
+        })()`, returnByValue: true });
+        if(interaction.exceptionDetails || !interaction.result.value) throw new Error('Dashboard interaction failed: '+JSON.stringify(interaction));
+        const exported = await send('Runtime.evaluate', { expression: `(async()=>{
+          const original=URL.createObjectURL;let captured;
+          URL.createObjectURL=blob=>{captured=blob;return original(blob)};
+          try{document.querySelector('[data-download-chart]').click();const text=await captured.text();const doc=new DOMParser().parseFromString(text,'image/svg+xml');
+          if(doc.querySelector('parsererror,script,.chart-datum,.chart-cursor')||doc.documentElement.getAttribute('viewBox')!=='0 0 980 286'||!doc.querySelector('text'))throw new Error('Invalid SVG export');return true;}finally{URL.createObjectURL=original}
+        })()`, awaitPromise:true, returnByValue:true });
+        if(exported.exceptionDetails || !exported.result.value) throw new Error('SVG export failed: '+JSON.stringify(exported));
+      }
       const result = await send('Runtime.evaluate', { expression: 'JSON.stringify({width:innerWidth,scroll:document.documentElement.scrollWidth,h1:document.querySelector("h1")?.textContent,cream:getComputedStyle(document.documentElement).getPropertyValue("--accent").trim(),styles:[...document.querySelectorAll("link")].map(x=>x.href)})', returnByValue: true });
       const state = JSON.parse(result.result.value);
       if (state.scroll > state.width + 1) throw new Error(`Horizontal overflow at ${route} / ${width}: ${JSON.stringify(state)}`);

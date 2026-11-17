@@ -1,23 +1,9 @@
-@{
-    var start = new DateOnly(Today.Year, Today.Month, 1).AddMonths(-5);
-    var months = Enumerable.Range(0, 6).Select(i => start.AddMonths(i)).ToArray();
-    var data = months.Select(m => (Month: m, Income: Workspace.Transactions.Where(t => t.Date.Year == m.Year && t.Date.Month == m.Month && t.Kind == EntryKind.Income).Sum(t => t.Cents), Expense: -Workspace.Transactions.Where(t => t.Date.Year == m.Year && t.Date.Month == m.Month && t.Kind == EntryKind.Expense).Sum(t => t.Cents))).ToArray();
-    var max = Math.Max(100m, data.Max(x => Math.Max(x.Income, x.Expense)));
+﻿@{
+    var report = Report ?? FinancialAnalytics.Build(Workspace, new(new DateOnly(Today.Year, Today.Month, 1).AddMonths(-5), Today), Today);
 }
-<svg class="cashflow" viewBox="0 0 600 270" role="img" aria-label="Revenus et dépenses mensuels sur six mois">
-    <line x1="0" y1="220" x2="600" y2="220" class="chart-line" /><line x1="0" y1="120" x2="600" y2="120" class="chart-line" /><line x1="0" y1="20" x2="600" y2="20" class="chart-line" />
-    @for (var i = 0; i < data.Length; i++)
-    {
-        var item = data[i]; var h1 = item.Income * 185m / max; var h2 = item.Expense * 185m / max;
-        <rect x="@(i * 100 + 22)" y="@Number(220 - h1)" width="23" height="@Number(h1)" rx="4" class="bar-income"><title>@item.Month.ToString("MMMM yyyy", Fr) : revenus @FinancePage.Euro(item.Income)</title></rect>
-        <rect x="@(i * 100 + 51)" y="@Number(220 - h2)" width="23" height="@Number(h2)" rx="4" class="bar-expense"><title>@item.Month.ToString("MMMM yyyy", Fr) : dépenses @FinancePage.Euro(item.Expense)</title></rect>
-        <g><text x="@(i * 100 + 49)" y="250" text-anchor="middle">@item.Month.ToString("MMM", Fr)</text></g>
-    }
-</svg>
-<details class="chart-data"><summary>Lire les montants du graphique</summary><table><thead><tr><th>Mois</th><th>Revenus</th><th>Dépenses</th></tr></thead><tbody>@foreach (var x in data) { <tr><td>@x.Month.ToString("MMM yyyy", Fr)</td><td>@FinancePage.Euro(x.Income)</td><td>@FinancePage.Euro(x.Expense)</td></tr> }</tbody></table></details>
+<FlowChart Report="report" />
 @code {
     [Parameter, EditorRequired] public Workspace Workspace { get; set; } = default!;
     [Parameter] public DateOnly Today { get; set; }
-    private static readonly CultureInfo Fr = CultureInfo.GetCultureInfo("fr-FR");
-    private static string Number(decimal value) => value.ToString("0.##", CultureInfo.InvariantCulture);
+    [Parameter] public AnalyticsReport? Report { get; set; }
 }

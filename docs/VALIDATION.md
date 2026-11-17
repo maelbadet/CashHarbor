@@ -5,7 +5,7 @@ Vérifications effectuées le 17 novembre 2026, avec des données exclusivement 
 | Vérification | Résultat |
 | --- | --- |
 | Construction de la solution .NET 10 | Réussite, zéro avertissement et zéro erreur |
-| Suites exécutables métier / stockage / HTTP | 30 sur 30 |
+| Suites exécutables métier / stockage / HTTP | 31 sur 31 |
 | Vecteurs officiels RFC 6238 | Six vecteurs SHA-1 vérifiés |
 | Précision des montants et dates limites | Validées |
 | Virements atomiques et suppression des deux écritures | Validés |
@@ -17,6 +17,9 @@ Vérifications effectuées le 17 novembre 2026, avec des données exclusivement 
 | CSS et icône accessibles sur l’hôte réel | Validés |
 | Chrome isolé : comptes, épargne, prêts personnels et communs, détails et autres pages, 390 et 1 440 px | 26 parcours validés, thème rouge et noir appliqué, aucun débordement horizontal global, relevés de solde dépliés dans la vue épargne |
 | Captures du tableau de bord mobile et ordinateur | Inspectées visuellement |
+| Analyse financière | Soldes quotidiens comparés au journal, centimes exacts, couverture partielle, soldes négatifs, regroupements sans perte, comparaison de périodes et CSV vérifiés |
+| Interactions des graphiques | Clavier, toucher, légende, dates personnalisées et export SVG vérifiés à 390 et 1 440 px, sans erreur JavaScript ni violation CSP |
+| Export analytique HTTP | Compte privé du partenaire et dates invalides rejetés ; CSV commun identique au rapport autorisé |
 | NuGet : dépendances directes et transitives vulnérables connues | Aucune signalée par les sources consultées |
 | Configuration Docker Compose | Valide avec origine HTTPS de test |
 | Image Linux : compilation Release | Réussite |
