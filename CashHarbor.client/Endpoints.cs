@@ -29,9 +29,9 @@ public static class Endpoints
             await http.SignOutAsync(); return Results.LocalRedirect("/connexion");
         }).RequireAuthorization();
         app.MapPost("/actions/{action}", WriteAsync).RequireAuthorization().RequireRateLimiting("write");
-        app.MapGet("/export/{format}", async (string format, FinanceService finance) =>
+        app.MapGet("/export/{format}", async (string format, HttpContext http, FinanceService finance) =>
         {
-            var w = await finance.ReadAsync();
+            var w = await finance.ReadAsync(Guid.Parse(http.User.FindFirstValue(ClaimTypes.NameIdentifier)!));
             return format switch
             {
                 "csv" => Results.File(Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(FinanceService.ExportCsv(w))).ToArray(), "text/csv; charset=utf-8", "cashharbor-operations.csv"),
@@ -53,12 +53,14 @@ public static class Endpoints
         {
             switch (action)
             {
-                case "account-add": await finance.AddAccountAsync(actor, S("name"), S("institution"), Enum.Parse<AccountKind>(S("kind")), M("opening"), D("date")); break;
+                case "account-add": await finance.AddAccountAsync(actor, S("name"), S("institution"), Enum.Parse<AccountKind>(S("kind")), M("opening"), D("date"), Enum.Parse<AccountVisibility>(S("visibility")), S("product")); break;
+                case "account-share": await finance.ShareAccountAsync(actor, G("id"), S("confirm") == "on"); break;
+                case "account-balance": await finance.RecordBalanceAsync(actor, G("id"), M("balance"), D("date")); break;
                 case "account-edit": await finance.RenameAccountAsync(actor, G("id"), S("name"), S("institution")); break;
                 case "account-delete": await finance.DeleteAccountAsync(actor, G("id")); break;
                 case "transaction-add": await finance.AddTransactionAsync(actor, G("account"), S("label"), S("category"), M("amount"), D("date"), Enum.Parse<EntryKind>(S("kind")), O("target")); break;
                 case "transaction-delete": await finance.DeleteTransactionAsync(actor, G("id")); break;
-                case "goal-save": await finance.SaveGoalAsync(actor, O("id"), S("name"), M("target"), M("saved"), string.IsNullOrEmpty(S("deadline")) ? null : D("deadline")); break;
+                case "goal-save": await finance.SaveGoalAsync(actor, O("id"), S("name"), M("target"), M("saved"), string.IsNullOrEmpty(S("deadline")) ? null : D("deadline"), string.IsNullOrEmpty(S("visibility")) ? AccountVisibility.Personal : Enum.Parse<AccountVisibility>(S("visibility"))); break;
                 case "goal-delete": await finance.DeleteGoalAsync(actor, G("id")); break;
                 case "recurrence-add": await finance.AddRecurrenceAsync(actor, G("account"), S("label"), S("category"), M("amount"), D("next"), S("essential") == "on"); break;
                 case "recurrence-delete": await finance.DeleteRecurrenceAsync(actor, G("id")); break;

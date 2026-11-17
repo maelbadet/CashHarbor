@@ -37,6 +37,7 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 builder.Services.AddDbContextFactory<VaultDb>(options => options.UseSqlite($"Data Source={Path.Combine(dataDirectory, "cashharbor.db")};Foreign Keys=True;Default Timeout=10"));
 builder.Services.AddSingleton<StorageGate>(); builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<IWorkspaceStore, EncryptedWorkspaceStore>(); builder.Services.AddScoped<IIdentityService, IdentityService>(); builder.Services.AddScoped<FinanceService>();
+builder.Services.AddScoped<LegacyAccessMigrator>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme).AddCookie(options =>
 {
@@ -74,13 +75,9 @@ var app = builder.Build();
 await using (var scope = app.Services.CreateAsyncScope())
 {
     var factory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<VaultDb>>(); await using var db = await factory.CreateDbContextAsync();
-    await db.Database.EnsureCreatedAsync();
-    var connection = db.Database.GetDbConnection(); await connection.OpenAsync();
-    using var read = connection.CreateCommand(); read.CommandText = "PRAGMA user_version";
-    var version = Convert.ToInt32(await read.ExecuteScalarAsync(), CultureInfo.InvariantCulture);
-    if (version is not (0 or 1)) throw new InvalidOperationException("Unsupported database schema. Migrate first.");
-    using var set = connection.CreateCommand(); set.CommandText = "PRAGMA user_version = 1"; await set.ExecuteNonQueryAsync();
+    await DatabaseSchema.InitializeAsync(db, TimeProvider.System);
 }
+if (args.Contains("--classify-accounts")) { await AccessClassification.RunAsync(app.Services); return; }
 if (args.Contains("--setup") || args.Contains("--reset-user")) { await Provisioning.RunAsync(app.Services, args.Contains("--reset-user")); return; }
 app.UseExceptionHandler("/erreur"); app.UseForwardedHeaders();
 if (!app.Environment.IsDevelopment()) app.UseHsts();

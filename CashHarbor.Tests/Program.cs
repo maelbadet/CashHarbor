@@ -16,9 +16,10 @@ using Microsoft.Extensions.DependencyInjection;
 var root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../"));
 var runDirectory = Path.Combine(root, ".test-artifacts", Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(runDirectory);
-var passed = 0;
+var passed = 0; var executed = 0;
 async Task Test(string name, Func<Task> test)
 {
+    executed++;
     try { await test(); Console.WriteLine("PASS " + name); passed++; }
     catch (Exception ex) { Console.Error.WriteLine("FAIL " + name + ": " + ex); Environment.ExitCode = 1; }
 }
@@ -77,12 +78,12 @@ await Test("Only two provisioned users; reset revokes sessions", async () =>
 var today = finance.Today;
 await finance.AddAccountAsync(actor, "Private Current", "Private Institution", AccountKind.Current, 1000m, today.AddMonths(-3));
 await finance.AddAccountAsync(actor, "Savings", "Bank", AccountKind.Savings, 200m, today.AddMonths(-3));
-var state = await finance.ReadAsync(); var a = state.Accounts[0].Id; var b = state.Accounts[1].Id;
+var state = await finance.ReadAsync(actor); var a = state.Accounts[0].Id; var b = state.Accounts[1].Id;
 await Test("Exact money, ledger balances, and historical boundaries", async () =>
 {
     await finance.AddTransactionAsync(actor, a, "Coffee", "Loisirs", 0.10m, today, EntryKind.Expense);
     await finance.AddTransactionAsync(actor, a, "Coffee", "Loisirs", 0.20m, today, EntryKind.Expense);
-    var w = await finance.ReadAsync(); Check(w.Balance(a) == 99970, "Money lost precision.");
+    var w = await finance.ReadAsync(actor); Check(w.Balance(a) == 99970, "Money lost precision.");
     Check(w.Balance(a, today.AddYears(-2)) == 0, "Opening balance leaked before opening date.");
     await Reject(() => finance.AddTransactionAsync(actor, a, "Bad", "Autres", 0.001m, today, EntryKind.Expense));
     await Reject(() => finance.AddTransactionAsync(actor, a, "Bad", "Autres", -1m, today, EntryKind.Expense));
@@ -92,13 +93,13 @@ await Test("Exact money, ledger balances, and historical boundaries", async () =
 });
 await Test("Atomic transfers and paired deletion preserve net worth", async () =>
 {
-    var before = await finance.ReadAsync(); var total = before.Accounts.Sum(x => before.Balance(x.Id));
+    var before = await finance.ReadAsync(actor); var total = before.Accounts.Sum(x => before.Balance(x.Id));
     await finance.AddTransactionAsync(actor, a, "Transfer", "ignored", 150m, today, EntryKind.Transfer, b);
-    var w = await finance.ReadAsync(); Check(w.Accounts.Sum(x => w.Balance(x.Id)) == total, "Transfer changed net worth.");
+    var w = await finance.ReadAsync(actor); Check(w.Accounts.Sum(x => w.Balance(x.Id)) == total, "Transfer changed net worth.");
     Check(w.Balance(b) == 35000, "Destination not credited.");
     var t = w.Transactions.Single(x => x.AccountId == a && x.Kind == EntryKind.Transfer);
     await finance.DeleteTransactionAsync(actor, t.Id);
-    w = await finance.ReadAsync(); Check(!w.Transactions.Any(x => x.TransferId == t.TransferId), "Orphan transfer leg.");
+    w = await finance.ReadAsync(actor); Check(!w.Transactions.Any(x => x.TransferId == t.TransferId), "Orphan transfer leg.");
     Check(w.Balance(b) == 20000, "Transfer removal did not reverse balances.");
     await Reject(() => finance.AddTransactionAsync(actor, a, "Bad", "Autres", 1m, today, EntryKind.Transfer, a));
     await Reject(() => finance.DeleteAccountAsync(actor, a));
@@ -107,16 +108,16 @@ await Test("Month-end recurrences are idempotent across short months", async () 
 {
     await finance.AddRecurrenceAsync(actor, a, "Monthly", "Logement", -10m, new DateOnly(2026, 8, 31), true);
     await finance.BookDueAsync(actor); await finance.BookDueAsync(actor);
-    var w = await finance.ReadAsync(); var r = w.Recurrences.Single();
+    var w = await finance.ReadAsync(actor); var r = w.Recurrences.Single();
     Check(r.NextDate == new DateOnly(2026, 11, 30), "Month-end recurrence drifted.");
     var dates = w.Transactions.Where(t => t.RecurrenceId == r.Id).Select(t => t.Date).ToArray();
     Check(dates.SequenceEqual(new[] { new DateOnly(2026, 8, 31), new DateOnly(2026, 9, 30), new DateOnly(2026, 10, 31) }), "Recurrence duplicated or skipped.");
 });
 await Test("Concurrent writes do not lose data and unknown actors cannot write", async () =>
 {
-    var before = (await finance.ReadAsync()).Transactions.Count;
+    var before = (await finance.ReadAsync(actor)).Transactions.Count;
     await Task.WhenAll(Enumerable.Range(0, 12).Select(i => finance.AddTransactionAsync(actor, a, "Concurrent " + i, "Autres", 1m, today, EntryKind.Income)));
-    Check((await finance.ReadAsync()).Transactions.Count == before + 12, "Lost concurrent write.");
+    Check((await finance.ReadAsync(actor)).Transactions.Count == before + 12, "Lost concurrent write.");
     try { await finance.AddAccountAsync(Guid.NewGuid(), "Intruder", "Bank", AccountKind.Current, 0m, today); throw new Exception("Unknown actor accepted."); } catch (UnauthorizedAccessException) { }
 });
 await Test("Financial content is encrypted and CSV neutralizes formulas", async () =>
@@ -124,15 +125,16 @@ await Test("Financial content is encrypted and CSV neutralizes formulas", async 
     await finance.AddTransactionAsync(actor, a, "=HYPERLINK(\"bad\")", "Autres", 1m, today, EntryKind.Expense);
     await using var db = await factory.CreateDbContextAsync(); var row = await db.Vaults.SingleAsync();
     Check(!row.Payload.Contains("Private Current") && !row.Payload.Contains("HYPERLINK"), "Plaintext financial data.");
-    var csv = FinanceService.ExportCsv(await finance.ReadAsync()); Check(csv.Contains("'\u003dHYPERLINK"), "CSV injection not neutralized.");
+    var csv = FinanceService.ExportCsv(await finance.ReadAsync(actor)); Check(csv.Contains("'\u003dHYPERLINK"), "CSV injection not neutralized.");
     Check(!await db.Users.AnyAsync(u => u.ProtectedSecret == secret), "Plaintext MFA key.");
 });
 await Test("Invalid goals and invalid updates do not partially persist", async () =>
 {
     await Reject(() => finance.SaveGoalAsync(actor, null, "Bad", 100m, 101m, null));
     await Reject(() => finance.SavePolicyAsync(actor, "Bad", 0, 1m));
-    var w = await finance.ReadAsync(); Check(w.Goals.Count == 0 && w.Name == "Notre foyer", "Invalid update partially persisted.");
+    var w = await finance.ReadAsync(actor); Check(w.Goals.Count == 0 && w.Name == "Notre foyer", "Invalid update partially persisted.");
 });
+await AccessRegression.RunAsync(Test, scope.ServiceProvider, finance, actor, clock);
 await Test("HTTPS host: authentication, CSRF, protected routes, export, MFA and logout", async () =>
 {
     var httpDirectory = Path.Combine(runDirectory, "http"); Directory.CreateDirectory(httpDirectory);
@@ -154,9 +156,10 @@ await Test("HTTPS host: authentication, CSRF, protected routes, export, MFA and 
     // Synthetic household for representative chart and responsive checks. Never production seed data.
     var sample = httpProvider.GetRequiredService<FinanceService>(); var sampleDate = sample.Today;
     Guid sampleActor; await using (var db = await httpFactory.CreateDbContextAsync()) sampleActor = (await db.Users.SingleAsync()).Id;
-    await sample.AddAccountAsync(sampleActor, "Compte commun", "Banque du foyer", AccountKind.Current, 1700m, sampleDate.AddMonths(-6));
-    await sample.AddAccountAsync(sampleActor, "Livret projets", "Banque du foyer", AccountKind.Savings, 7300m, sampleDate.AddMonths(-6));
-    var sampleAccount = (await sample.ReadAsync()).Accounts[0].Id;
+    await sample.AddAccountAsync(sampleActor, "Mon compte personnel", "Banque du foyer", AccountKind.Current, 1700m, sampleDate.AddMonths(-6));
+    await sample.AddAccountAsync(sampleActor, "Épargne commune", "Banque du foyer", AccountKind.Savings, 7300m, sampleDate.AddMonths(-6), AccountVisibility.Joint, "Livret bancaire");
+    var sampleAccount = (await sample.ReadAsync(sampleActor)).Accounts[0].Id;
+    var sharedAccount = (await sample.ReadAsync(sampleActor)).Accounts.Single(a => a.Visibility == AccountVisibility.Joint).Id;
     for (var i = 5; i >= 0; i--)
     {
         var date = new DateOnly(sampleDate.Year, sampleDate.Month, Math.Min(10, sampleDate.Day)).AddMonths(-i);
@@ -164,9 +167,19 @@ await Test("HTTPS host: authentication, CSRF, protected routes, export, MFA and 
         await sample.AddTransactionAsync(sampleActor, sampleAccount, "Loyer", "Logement", 850m, date, EntryKind.Expense);
         await sample.AddTransactionAsync(sampleActor, sampleAccount, "Courses de la semaine", "Courses", 245.35m + i * 12, date, EntryKind.Expense);
         await sample.AddTransactionAsync(sampleActor, sampleAccount, "Sorties et loisirs", "Loisirs", 120m + i * 17, date, EntryKind.Expense);
+        await sample.RecordBalanceAsync(sampleActor, sharedAccount, 7300m + (5 - i) * 180m, date);
     }
-    await sample.SaveGoalAsync(sampleActor, null, "Notre prochain voyage", 2500m, 870m, sampleDate.AddMonths(8));
+    await sample.SaveGoalAsync(sampleActor, null, "Notre prochain voyage", 2500m, 870m, sampleDate.AddMonths(8), AccountVisibility.Joint);
+    await sample.SaveGoalAsync(sampleActor, null, "Mon projet personnel", 1500m, 450m, sampleDate.AddMonths(8));
     await sample.AddRecurrenceAsync(sampleActor, sampleAccount, "Loyer", "Logement", -850m, sampleDate.AddDays(5), true);
+    var partnerSecret = Totp.NewSecret();
+    await httpProvider.GetRequiredService<IIdentityService>().ProvisionAsync("partner@example.test", password, partnerSecret, Totp.Code(partnerSecret, httpClock.Now.ToUnixTimeSeconds() / 30), false);
+    Guid partnerActor; await using (var db = await httpFactory.CreateDbContextAsync()) partnerActor = await db.Users.Where(u => u.Email == "partner@example.test").Select(u => u.Id).SingleAsync();
+    await sample.AddAccountAsync(partnerActor, "B_PRIVATE_ACCOUNT", "B_PRIVATE_BANK", AccountKind.Savings, 98765m, sampleDate.AddMonths(-6));
+    var partnerAccount = (await sample.ReadAsync(partnerActor)).Accounts.Single(a => a.OwnerId == partnerActor).Id;
+    await sample.AddTransactionAsync(partnerActor, partnerAccount, "B_PRIVATE_OPERATION", "Autres", 12345m, sampleDate, EntryKind.Income);
+    await sample.AddRecurrenceAsync(partnerActor, partnerAccount, "B_PRIVATE_RECURRENCE", "Autres", -77m, sampleDate, true);
+    await sample.SaveGoalAsync(partnerActor, null, "B_PRIVATE_GOAL", 100m, 20m, null);
     var listener = new TcpListener(IPAddress.Loopback, 0); listener.Start(); var port = ((IPEndPoint)listener.LocalEndpoint).Port; listener.Stop();
     var origin = $"https://127.0.0.1:{port}";
     var start = new ProcessStartInfo("dotnet") { WorkingDirectory = Path.Combine(root, "CashHarbor.client"), RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true };
@@ -204,10 +217,11 @@ await Test("HTTPS host: authentication, CSRF, protected routes, export, MFA and 
         foreach (var route in new[] { "/", "/comptes", "/operations", "/objectifs", "/echeances", "/parametres" }) Check((await client.GetAsync(route)).IsSuccessStatusCode, "Authenticated route failed: " + route);
         Check((await client.PostAsync("/actions/account-add", new FormUrlEncodedContent(new Dictionary<string, string>()))).StatusCode == HttpStatusCode.BadRequest, "Write CSRF accepted.");
         html = await client.GetStringAsync("/comptes"); token = Token(html);
-        response = await client.PostAsync("/actions/account-add", new FormUrlEncodedContent(new Dictionary<string, string> { ["__RequestVerificationToken"] = token, ["name"] = "Web Account", ["institution"] = "Bank", ["kind"] = "Current", ["opening"] = "123.45", ["date"] = DateTime.Today.ToString("yyyy-MM-dd") }));
+        response = await client.PostAsync("/actions/account-add", new FormUrlEncodedContent(new Dictionary<string, string> { ["__RequestVerificationToken"] = token, ["name"] = "Web Account", ["institution"] = "Bank", ["kind"] = "Current", ["visibility"] = "Personal", ["opening"] = "123.45", ["date"] = DateTime.Today.ToString("yyyy-MM-dd") }));
         Check(response.StatusCode == HttpStatusCode.Redirect && response.Headers.Location!.OriginalString.Contains("succes=1"), "Account creation HTTP failed.");
         Check((await client.GetStringAsync("/comptes")).Contains("Web Account"), "Created account not rendered.");
         Check((await client.GetAsync("/export/json")).IsSuccessStatusCode, "Export failed.");
+        await HttpAccessRegression.RunAsync(client, origin, password, partnerSecret, sampleActor, sampleAccount, sharedAccount, partnerActor);
         if (Environment.GetEnvironmentVariable("CASHHARBOR_BROWSER") is { Length: > 0 })
         {
             var fixturePath = Path.Combine(httpDirectory, "ui-fixture.json");
@@ -236,7 +250,7 @@ await Test("HTTPS host: authentication, CSRF, protected routes, export, MFA and 
     }
     finally { if (!process.HasExited) process.Kill(true); await process.WaitForExitAsync(); }
 });
-Console.WriteLine($"{passed}/10 suites passed. Temporary fixtures: {runDirectory}");
+Console.WriteLine($"{passed}/{executed} suites passed. Temporary fixtures: {runDirectory}");
 return Environment.ExitCode;
 
 static string Token(string html)

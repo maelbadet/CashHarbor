@@ -1,15 +1,17 @@
 namespace CashHarbor.Domain;
 
 public enum AccountKind { Current, Savings, Investment }
-public enum EntryKind { Expense, Income, Transfer }
-public sealed record FinancialAccount(Guid Id, string Name, string Institution, AccountKind Kind, long OpeningCents, DateOnly OpeningDate);
+public enum EntryKind { Expense, Income, Transfer, Adjustment }
+// Zero deliberately means unclassified: legacy data must not silently become shared.
+public enum AccountVisibility { Unassigned, Personal, Joint }
+public sealed record FinancialAccount(Guid Id, string Name, string Institution, AccountKind Kind, long OpeningCents, DateOnly OpeningDate, AccountVisibility Visibility = AccountVisibility.Unassigned, Guid? OwnerId = null, string Product = "");
 public sealed record Transaction(Guid Id, Guid AccountId, string Label, string Category, long Cents, DateOnly Date, EntryKind Kind, Guid? TransferId = null, Guid? RecurrenceId = null);
-public sealed record FinancialGoal(Guid Id, string Name, long TargetCents, long SavedCents, DateOnly? Deadline);
+public sealed record FinancialGoal(Guid Id, string Name, long TargetCents, long SavedCents, DateOnly? Deadline, AccountVisibility Visibility = AccountVisibility.Unassigned, Guid? OwnerId = null);
 public sealed record RecurringOperation(Guid Id, Guid AccountId, string Label, string Category, long Cents, DateOnly NextDate, int DayOfMonth, bool Essential, bool Active = true);
-public sealed record BalanceSnapshot(Guid AccountId, long BalanceCents, DateOnly Date);
+public sealed record BalanceSnapshot(Guid AccountId, long BalanceCents, DateOnly Date, Guid? AdjustmentId = null);
 public sealed record EmergencyFundPolicy(int TargetMonths = 3, long BufferCents = 50000);
 
-// One shared workspace. Amounts are exact integer euro cents; no floating point money.
+// One encrypted household vault; every read and write is scoped to the authenticated user.
 public sealed class Workspace
 {
     public const string SharedId = "household";
@@ -19,6 +21,7 @@ public sealed class Workspace
     public List<Transaction> Transactions { get; set; } = [];
     public List<FinancialGoal> Goals { get; set; } = [];
     public List<RecurringOperation> Recurrences { get; set; } = [];
+    public List<BalanceSnapshot> Snapshots { get; set; } = [];
     public EmergencyFundPolicy EmergencyPolicy { get; set; } = new();
     public long Balance(Guid accountId, DateOnly? at = null)
     {

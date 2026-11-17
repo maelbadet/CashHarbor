@@ -3,7 +3,7 @@
 @inherits FinancePage
 @inject IIdentityService Identity
 <PageTitle>Paramètres · CashHarbor</PageTitle>
-<header class="page-header"><div><span class="eyebrow">VOTRE ESPACE, VOS REPÈRES</span><h1>Gardez le cap<span class="orange">.</span></h1><p>Les préférences du foyer et la sécurité de votre accès.</p></div></header>
+<header class="page-header"><div><span class="eyebrow">VOTRE ESPACE, VOS REPÈRES</span><h1>Gardez le cap<span class="accent">.</span></h1><p>Les préférences du foyer et la sécurité de votre accès.</p></div></header>
 <Notice />
 @if (W != null)
 {
@@ -14,9 +14,9 @@
     <div class="grid-two"><section class="panel"><h2>Notre foyer</h2><form class="stack" method="post" action="/actions/settings-save"><AntiforgeryToken /><label>Nom de l’espace<input name="name" value="@W.Name" maxlength="100" required /></label><label>Mois de dépenses à couvrir<input name="months" type="number" min="1" max="24" value="@W.EmergencyPolicy.TargetMonths" required /></label><label>Réserve supplémentaire (€)<input name="buffer" type="number" min="0" max="100000000" step="0.01" value="@Amount(W.EmergencyPolicy.BufferCents)" required /></label><button>Enregistrer les préférences</button></form></section>
     <section class="panel"><h2>Votre mot de passe</h2><p class="muted">Le changement révoque toutes les sessions de votre accès.</p><form class="stack" method="post" action="/actions/password-change"><AntiforgeryToken /><label>Mot de passe actuel<input name="current" type="password" autocomplete="current-password" maxlength="128" required /></label><label>Nouveau mot de passe<input name="password" type="password" autocomplete="new-password" minlength="14" maxlength="128" required /><small>14 caractères minimum. Utilisez un mot de passe unique.</small></label><label>Nouveau code d’authentification<input name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" required /></label><button class="secondary">Modifier et me reconnecter</button></form></section></div>
     <section class="panel"><h2>Vos données vous appartiennent.</h2><p class="muted">Les exports sont en clair : conservez-les dans un emplacement protégé. L’export JSON contient les données du foyer, pas les accès ni les clés. La restauration complète passe par une sauvegarde du serveur.</p><div class="button-row"><a class="button secondary" href="/export/csv">Exporter les opérations · CSV ↗</a><a class="button secondary" href="/export/json">Exporter le foyer · JSON ↗</a></div></section>
-    <section class="panel"><h2>Activité récente</h2><p class="muted">Les 50 derniers événements du foyer, sans libellés ni montants. Horaires en UTC.</p><div class="table-scroll"><table><thead><tr><th>Horodatage UTC</th><th>Événement</th><th>Accès</th></tr></thead><tbody>@foreach (var e in Events) { <tr><td>@e.At.UtcDateTime.ToString("dd/MM/yyyy HH:mm:ss")</td><td>@e.Action</td><td>@(e.Actor?.ToString()[..8] ?? "Inconnu")</td></tr> }</tbody></table></div></section>
+    <section class="panel"><h2>Mon activité récente</h2><p class="muted">Les 50 derniers événements de votre accès uniquement, sans libellés ni montants. Horaires en UTC.</p><div class="table-scroll"><table><thead><tr><th>Horodatage UTC</th><th>Événement</th></tr></thead><tbody>@foreach (var e in Events) { <tr><td>@e.At.UtcDateTime.ToString("dd/MM/yyyy HH:mm:ss")</td><td>@e.Action</td></tr> }</tbody></table></div></section>
 }
 @code {
     private IReadOnlyList<SecurityEvent> Events = [];
-    protected override async Task OnInitializedAsync() { await base.OnInitializedAsync(); Events = await Identity.EventsAsync(); }
+    protected override async Task OnInitializedAsync() { await base.OnInitializedAsync(); Events = await Identity.EventsAsync(Actor); }
 }

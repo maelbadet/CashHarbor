@@ -2,7 +2,7 @@
 @attribute [Authorize]
 @inherits FinancePage
 <PageTitle>Opérations · CashHarbor</PageTitle>
-<header class="page-header"><div><span class="eyebrow">LES PETITS MOUVEMENTS COMPTENT</span><h1>Votre quotidien, en clair<span class="orange">.</span></h1><p>Dépenses, revenus et virements entre vos comptes.</p></div><a class="button secondary" href="/export/csv">Exporter en CSV ↗</a></header>
+<header class="page-header"><div><span class="eyebrow">LES PETITS MOUVEMENTS COMPTENT</span><h1>Votre quotidien, en clair<span class="accent">.</span></h1><p>Dépenses, revenus et virements entre vos comptes.</p></div><a class="button secondary" href="/export/csv">Exporter en CSV ↗</a></header>
 <Notice />
 @if (W != null)
 {
@@ -15,7 +15,7 @@
     <div class="table-scroll"><table><caption>@list.Length opération(s) · page @current / @pages</caption><thead><tr><th>Date</th><th>Opération</th><th>Compte</th><th>Catégorie</th><th class="number">Montant</th><th>Action</th></tr></thead><tbody>
     @foreach (var t in list.Skip((current - 1) * 30).Take(30))
     {
-        <tr><td class="nowrap">@t.Date.ToString("dd/MM/yyyy")</td><td><strong>@t.Label</strong><small>@(t.Kind == EntryKind.Transfer ? "Virement interne" : t.Kind == EntryKind.Income ? "Revenu" : "Dépense")</small></td><td>@W.Accounts.Single(a => a.Id == t.AccountId).Name</td><td><span class="tag">@t.Category</span></td><td class="number @(t.Cents > 0 ? "positive" : "")">@(t.Cents > 0 ? "+" : "")@Euro(t.Cents)</td><td><details><summary>Supprimer</summary><p>@(t.TransferId != null ? "Les deux écritures du virement seront supprimées." : "Le solde sera recalculé.")</p><form method="post" action="/actions/transaction-delete"><AntiforgeryToken /><input type="hidden" name="id" value="@t.Id" /><button class="danger small-button">Confirmer</button></form></details></td></tr>
+        <tr><td class="nowrap">@t.Date.ToString("dd/MM/yyyy")</td><td><strong>@t.Label</strong><small>@(t.Kind == EntryKind.Transfer ? "Virement interne" : t.Kind == EntryKind.Income ? "Revenu" : t.Kind == EntryKind.Adjustment ? "Ajustement de solde" : "Dépense")</small></td><td>@W.Accounts.Single(a => a.Id == t.AccountId).Name</td><td><span class="tag">@t.Category</span></td><td class="number @(t.Cents > 0 ? "positive" : "")">@(t.Cents > 0 ? "+" : "")@Euro(t.Cents)</td><td>@if (t.Kind != EntryKind.Adjustment) { <details><summary>Supprimer</summary><p>@(t.TransferId != null ? "Les deux écritures du virement seront supprimées." : "Le solde sera recalculé.")</p><form method="post" action="/actions/transaction-delete"><AntiforgeryToken /><input type="hidden" name="id" value="@t.Id" /><button class="danger small-button">Confirmer</button></form></details> } else { <a href="/comptes">Modifier le relevé</a> }</td></tr>
     }
     @if (list.Length == 0) { <tr><td colspan="6" class="empty">Aucune opération à afficher.</td></tr> }
     </tbody></table></div>

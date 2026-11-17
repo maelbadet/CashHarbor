@@ -36,16 +36,16 @@ try {
   await send('Network.setCookies', { cookies: fixture.cookies });
   for (const width of [1440, 390]) {
     await send('Emulation.setDeviceMetricsOverride', { width, height: width === 390 ? 844 : 1000, deviceScaleFactor: 1, mobile: width === 390 });
-    for (const route of ['/', '/comptes', '/operations', '/objectifs', '/echeances', '/parametres', '/connexion']) {
+    for (const route of ['/', '/comptes', '/comptes?type=epargne', '/comptes?vue=commun', '/comptes?vue=personnel', '/operations', '/objectifs', '/echeances', '/parametres', '/connexion']) {
       await send('Page.navigate', { url: fixture.origin + route });
       await delay(500);
       for (let i = 0; i < 40; i++) { const r = await send('Runtime.evaluate', { expression: 'document.readyState === "complete"', returnByValue: true }); if (r.result.value) break; await delay(100); }
-      const result = await send('Runtime.evaluate', { expression: 'JSON.stringify({width:innerWidth,scroll:document.documentElement.scrollWidth,h1:document.querySelector("h1")?.textContent,cream:getComputedStyle(document.documentElement).getPropertyValue("--cream").trim(),styles:[...document.querySelectorAll("link")].map(x=>x.href)})', returnByValue: true });
+      const result = await send('Runtime.evaluate', { expression: 'JSON.stringify({width:innerWidth,scroll:document.documentElement.scrollWidth,h1:document.querySelector("h1")?.textContent,cream:getComputedStyle(document.documentElement).getPropertyValue("--accent").trim(),styles:[...document.querySelectorAll("link")].map(x=>x.href)})', returnByValue: true });
       const state = JSON.parse(result.result.value);
       if (state.scroll > state.width + 1) throw new Error(`Horizontal overflow at ${route} / ${width}: ${JSON.stringify(state)}`);
-      if (!state.h1 || state.h1.includes('Votre espace privé') || state.cream !== '#f7f3ee') throw new Error(`Page did not render with styles: ${route} / ${width}: ${JSON.stringify(state)}`);
+      if (!state.h1 || state.h1.includes('Votre espace privé') || state.cream !== '#ef4444') throw new Error(`Page did not render with styles: ${route} / ${width}: ${JSON.stringify(state)}`);
       const shot = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true });
-      await writeFile(path.join(screenshots, `${width}-${route === '/' ? 'dashboard' : route.slice(1)}.png`), Buffer.from(shot.data, 'base64'));
+      await writeFile(path.join(screenshots, `${width}-${route === '/' ? 'dashboard' : route.slice(1).replace(/[^a-z0-9-]/gi, '-')}.png`), Buffer.from(shot.data, 'base64'));
       console.log(`UI PASS ${width}px ${route}`);
     }
   }

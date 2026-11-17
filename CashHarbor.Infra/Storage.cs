@@ -47,11 +47,13 @@ public sealed class StorageGate { public SemaphoreSlim Lock { get; } = new(1, 1)
 public sealed class EncryptedWorkspaceStore(IDbContextFactory<VaultDb> factory, IDataProtectionProvider protection, StorageGate gate, TimeProvider clock) : IWorkspaceStore
 {
     private readonly IDataProtector protector = protection.CreateProtector("CashHarbor.Workspace.v1");
-    public async Task<Workspace> ReadAsync(CancellationToken ct = default)
+    public async Task<Workspace> ReadAsync(Guid actor, CancellationToken ct = default)
     {
         await using var db = await factory.CreateDbContextAsync(ct);
+        if (!await db.Users.AnyAsync(u => u.Id == actor, ct)) throw new UnauthorizedAccessException();
         var row = await db.Vaults.AsNoTracking().SingleOrDefaultAsync(x => x.Id == Workspace.SharedId, ct);
-        return row == null ? new() : JsonSerializer.Deserialize<Workspace>(protector.Unprotect(row.Payload)) ?? throw new InvalidDataException("Vault is empty.");
+        var workspace = row == null ? new() : JsonSerializer.Deserialize<Workspace>(protector.Unprotect(row.Payload)) ?? throw new InvalidDataException("Vault is empty.");
+        return WorkspaceAccess.VisibleTo(workspace, actor);
     }
     public async Task UpdateAsync(Guid actor, string action, Action<Workspace> change, CancellationToken ct = default)
     {
@@ -62,7 +64,9 @@ public sealed class EncryptedWorkspaceStore(IDbContextFactory<VaultDb> factory, 
             if (!await db.Users.AnyAsync(u => u.Id == actor, ct)) throw new UnauthorizedAccessException();
             var row = await db.Vaults.SingleOrDefaultAsync(x => x.Id == Workspace.SharedId, ct);
             var workspace = row == null ? new Workspace() : JsonSerializer.Deserialize<Workspace>(protector.Unprotect(row.Payload))!;
-            change(workspace);
+            var visible = WorkspaceAccess.VisibleTo(workspace, actor);
+            change(visible);
+            WorkspaceAccess.Merge(workspace, visible, actor);
             if (row == null) { row = new(); db.Vaults.Add(row); }
             row.Payload = protector.Protect(JsonSerializer.Serialize(workspace)); row.Revision++;
             db.Audit.Add(new() { Actor = actor, Action = action, At = clock.GetUtcNow() });

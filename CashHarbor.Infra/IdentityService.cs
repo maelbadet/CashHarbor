@@ -107,9 +107,9 @@ public sealed class IdentityService(IDbContextFactory<VaultDb> factory, IDataPro
         }
         finally { gate.Lock.Release(); }
     }
-    public async Task<IReadOnlyList<SecurityEvent>> EventsAsync(CancellationToken ct = default)
+    public async Task<IReadOnlyList<SecurityEvent>> EventsAsync(Guid actor, CancellationToken ct = default)
     {
         await using var db = await factory.CreateDbContextAsync(ct);
-        return await db.Audit.AsNoTracking().OrderByDescending(a => a.Id).Take(50).Select(a => new SecurityEvent(a.At, a.Action, a.Actor)).ToListAsync(ct);
+        return await db.Audit.AsNoTracking().Where(a => a.Actor == actor).OrderByDescending(a => a.Id).Take(50).Select(a => new SecurityEvent(a.At, a.Action, a.Actor)).ToListAsync(ct);
     }
 }

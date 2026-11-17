@@ -1,16 +1,16 @@
-﻿@page "/"
+@page "/"
 @attribute [Authorize]
 @inherits FinancePage
 <PageTitle>Vue d’ensemble · CashHarbor</PageTitle>
 @if (W != null)
 {
     var month = new DateOnly(Today.Year, Today.Month, 1);
-    var entries = W.Transactions.Where(t => t.Date >= month && t.Kind != EntryKind.Transfer).ToArray();
+    var entries = W.Transactions.Where(t => t.Date >= month && t.Kind is EntryKind.Expense or EntryKind.Income).ToArray();
     var income = entries.Where(t => t.Cents > 0).Sum(t => t.Cents);
     var expense = -entries.Where(t => t.Cents < 0).Sum(t => t.Cents);
     var total = W.Accounts.Sum(a => W.Balance(a.Id));
     var savings = W.Accounts.Where(a => a.Kind == AccountKind.Savings).Sum(a => W.Balance(a.Id));
-    <header class="page-header"><div><span class="eyebrow">@W.Name · @Today.ToString("MMMM yyyy", CultureInfo.GetCultureInfo("fr-FR"))</span><h1>Un cap sur vos finances<span class="orange">.</span></h1><p>Vos comptes réunis. Vos projets en vue.</p></div><a class="button" href="/operations#ajouter">Ajouter une opération ↗</a></header>
+    <header class="page-header"><div><span class="eyebrow">@W.Name · @Today.ToString("MMMM yyyy", CultureInfo.GetCultureInfo("fr-FR"))</span><h1>Un cap sur vos finances<span class="accent">.</span></h1><p>Vos comptes réunis. Vos projets en vue.</p></div><a class="button" href="/operations#ajouter">Ajouter une opération ↗</a></header>
     <Notice />
     <section class="stats" aria-label="Résumé du foyer">
         <article class="stat dark"><span>Patrimoine suivi</span><strong>@Euro(total)</strong><small>@W.Accounts.Count compte(s) réunis</small></article>
@@ -18,6 +18,11 @@
         <article class="stat"><span>Dépenses du mois</span><strong>@Euro(expense)</strong><small>Du @month.ToString("dd MMM", CultureInfo.GetCultureInfo("fr-FR")) à aujourd’hui</small></article>
         <article class="stat"><span>Épargne suivie</span><strong>@Euro(savings)</strong><small>Sur vos comptes d’épargne</small></article>
     </section>
+    <section class="ownership-summary" aria-label="Répartition par visibilité">
+        <a class="panel scope-card" href="/comptes?vue=personnel"><span class="eyebrow">MON ESPACE PERSONNEL</span><h2>Mes comptes</h2><strong>@Euro(W.Accounts.Where(a => a.Visibility == AccountVisibility.Personal).Sum(a => W.Balance(a.Id)))</strong><p>Vous seul pouvez voir vos comptes et votre épargne personnels. ↗</p></a>
+        <a class="panel scope-card" href="/comptes?vue=commun"><span class="eyebrow">NOTRE ESPACE COMMUN</span><h2>Nos comptes communs</h2><strong>@Euro(W.Accounts.Where(a => a.Visibility == AccountVisibility.Joint).Sum(a => W.Balance(a.Id)))</strong><p>Comptes joints et épargne partagée, visibles par vous deux. ↗</p></a>
+    </section>
+    <section class="panel"><div class="section-heading"><div><span class="eyebrow">LE PATRIMOINE DANS LE TEMPS</span><h2>L’évolution de vos comptes</h2></div><a href="/comptes?type=epargne">Suivre mon épargne ↗</a></div><BalanceHistoryChart Workspace="W" Today="Today" /></section>
     @if (W.Accounts.Count == 0)
     { <section class="welcome panel"><span class="eyebrow">ON PREND LE LARGE ?</span><h2>Votre première étape : un compte.</h2><p>Ajoutez votre compte courant et son solde de départ. Vos graphiques prendront forme au fil des opérations.</p><a class="button" href="/comptes#ajouter">Ajouter notre premier compte ↗</a><span class="welcome-mark" aria-hidden="true">↗</span></section> }
     <div class="grid-two">

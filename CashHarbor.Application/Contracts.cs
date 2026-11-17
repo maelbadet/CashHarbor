@@ -5,7 +5,7 @@ namespace CashHarbor.Application;
 public sealed class RuleException(string message) : Exception(message);
 public interface IWorkspaceStore
 {
-    Task<Workspace> ReadAsync(CancellationToken ct = default);
+    Task<Workspace> ReadAsync(Guid actor, CancellationToken ct = default);
     Task UpdateAsync(Guid actor, string action, Action<Workspace> change, CancellationToken ct = default);
 }
 public sealed record UserSession(Guid Id, string Email, string Version);
@@ -17,5 +17,5 @@ public interface IIdentityService
     Task RevokeSessionsAsync(Guid id, CancellationToken ct = default);
     Task ProvisionAsync(string email, string password, string secret, string code, bool reset, CancellationToken ct = default);
     Task ChangePasswordAsync(Guid id, string current, string password, string code, CancellationToken ct = default);
-    Task<IReadOnlyList<SecurityEvent>> EventsAsync(CancellationToken ct = default);
+    Task<IReadOnlyList<SecurityEvent>> EventsAsync(Guid actor, CancellationToken ct = default);
 }
