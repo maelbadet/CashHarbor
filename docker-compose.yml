@@ -1,49 +1,57 @@
+name: cashharbor
 services:
-  php:
-    build:
-      context: .
-      dockerfile: ./Dockerfile
-    container_name: php_CashHarbor
-    volumes:
-      - .:/var/www/html
-    networks:
-      - app_network
-  nginx:
-    image: nginx:stable-alpine3.24-perl
-    container_name: nginx_CashHarbor
+  app:
+    build: .
+    restart: unless-stopped
+    init: true
     ports:
-      - "80:80"
-    volumes:
-      - ./nginx.conf:/etc/nginx/conf.d/default.conf
-      - .:/var/www/html
-    depends_on:
-      - php
-    networks:
-      - app_network
-  db:
-    image: mariadb:13.0.1-ubi10-rc
-    container_name: db_CashHarbor
+      - "127.0.0.1:8080:8080"
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
-      MYSQL_DATABASE: ${MYSQL_DATABASE}
-      MYSQL_USER: ${MYSQL_USER}
-      MYSQL_PASSWORD: ${MYSQL_USER_PASSWORD}
-    ports:
-      - "3306:3306"
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "healthcheck.sh",
-          "--connect",
-          "--innodb_initialized"
-        ]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
+      Storage__Directory: /data
+      Storage__KeyDirectory: /keys
+      Security__PublicOrigin: ${CASHHARBOR_ORIGIN:?Set CASHHARBOR_ORIGIN in .env}
+      Security__ProxyAddress: 172.30.88.1
+      Security__KeyCertificatePath: /run/secrets/key_certificate
+      Security__KeyCertificatePasswordFile: /run/secrets/key_certificate_password
+      Logging__LogLevel__Default: Warning
+      Logging__LogLevel__Microsoft.AspNetCore: Warning
+      TZ: Europe/Paris
     volumes:
-      - db_data:/var/lib/mysql
+      - data:/data
+      - keys:/keys
+    secrets:
+      - key_certificate
+      - key_certificate_password
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,noexec,nosuid,nodev
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 150
+    mem_limit: 512m
+    cpus: 1.0
     networks:
-      - app_network
-  
+      - private
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+secrets:
+  key_certificate:
+    file: ./.secrets/keys.pfx
+  key_certificate_password:
+    file: ./.secrets/keys-password
+volumes:
+  data:
+    name: cashharbor_data
+  keys:
+    name: cashharbor_keys
+networks:
+  private:
+    ipam:
+      config:
+        - subnet: 172.30.88.0/24
+          gateway: 172.30.88.1

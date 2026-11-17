@@ -1,0 +1,6 @@
+@if (!string.IsNullOrWhiteSpace(Error)) { <div class="notice error" role="alert">@Error</div> }
+@if (Success == "1") { <div class="notice" role="status">C’est enregistré. Votre espace est à jour.</div> }
+@code {
+    [SupplyParameterFromQuery(Name = "erreur")] public string? Error { get; set; }
+    [SupplyParameterFromQuery(Name = "succes")] public string? Success { get; set; }
+}

@@ -1,0 +1,43 @@
+@page "/operations"
+@attribute [Authorize]
+@inherits FinancePage
+<PageTitle>Opérations · CashHarbor</PageTitle>
+<header class="page-header"><div><span class="eyebrow">LES PETITS MOUVEMENTS COMPTENT</span><h1>Votre quotidien, en clair<span class="orange">.</span></h1><p>Dépenses, revenus et virements entre vos comptes.</p></div><a class="button secondary" href="/export/csv">Exporter en CSV ↗</a></header>
+<Notice />
+@if (W != null)
+{
+    var selected = Guid.TryParse(AccountFilter, out var aid) ? (Guid?)aid : null;
+    var filtered = W.Transactions.Where(t => selected == null || t.AccountId == selected).Where(t => string.IsNullOrWhiteSpace(Search) || t.Label.Contains(Search, StringComparison.OrdinalIgnoreCase) || t.Category.Contains(Search, StringComparison.OrdinalIgnoreCase));
+    if (DateOnly.TryParseExact(Month + "-01", "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var first)) { filtered = filtered.Where(t => t.Date.Year == first.Year && t.Date.Month == first.Month); }
+    var list = filtered.OrderByDescending(t => t.Date).ThenByDescending(t => t.Id).ToArray();
+    var pages = Math.Max(1, (list.Length + 29) / 30); var current = Math.Clamp(Page, 1, pages);
+    <section class="panel"><form class="filters" method="get" action="/operations"><label>Compte<select name="compte"><option value="">Tous les comptes</option>@foreach (var a in W.Accounts) { <option value="@a.Id" selected="@(selected == a.Id)">@a.Name</option> }</select></label><label>Mois<input type="month" name="mois" value="@Month" /></label><label>Rechercher<input name="recherche" value="@Search" maxlength="100" placeholder="Libellé, catégorie…" /></label><button class="secondary">Filtrer</button><a href="/operations">Effacer</a></form>
+    <div class="table-scroll"><table><caption>@list.Length opération(s) · page @current / @pages</caption><thead><tr><th>Date</th><th>Opération</th><th>Compte</th><th>Catégorie</th><th class="number">Montant</th><th>Action</th></tr></thead><tbody>
+    @foreach (var t in list.Skip((current - 1) * 30).Take(30))
+    {
+        <tr><td class="nowrap">@t.Date.ToString("dd/MM/yyyy")</td><td><strong>@t.Label</strong><small>@(t.Kind == EntryKind.Transfer ? "Virement interne" : t.Kind == EntryKind.Income ? "Revenu" : "Dépense")</small></td><td>@W.Accounts.Single(a => a.Id == t.AccountId).Name</td><td><span class="tag">@t.Category</span></td><td class="number @(t.Cents > 0 ? "positive" : "")">@(t.Cents > 0 ? "+" : "")@Euro(t.Cents)</td><td><details><summary>Supprimer</summary><p>@(t.TransferId != null ? "Les deux écritures du virement seront supprimées." : "Le solde sera recalculé.")</p><form method="post" action="/actions/transaction-delete"><AntiforgeryToken /><input type="hidden" name="id" value="@t.Id" /><button class="danger small-button">Confirmer</button></form></details></td></tr>
+    }
+    @if (list.Length == 0) { <tr><td colspan="6" class="empty">Aucune opération à afficher.</td></tr> }
+    </tbody></table></div>
+    <div class="pagination">@if (current > 1) { <a class="button secondary" href="@PageUrl(current - 1)">← Précédent</a> } @if (current < pages) { <a class="button secondary" href="@PageUrl(current + 1)">Suivant →</a> }</div></section>
+    <section class="panel form-panel" id="ajouter"><span class="eyebrow">UN BUDGET À JOUR</span><h2>Ajouter une opération</h2>
+    @if (W.Accounts.Count == 0) { <p>Créez d’abord <a href="/comptes#ajouter">votre premier compte</a>.</p> }
+    else {
+        <form class="form-grid" method="post" action="/actions/transaction-add"><AntiforgeryToken />
+        <label>Type<select name="kind"><option value="Expense">Dépense</option><option value="Income">Revenu</option><option value="Transfer">Virement interne</option></select></label>
+        <label>Compte<select name="account">@foreach (var a in W.Accounts) { <option value="@a.Id">@a.Name</option> }</select></label>
+        <label>Libellé<input name="label" maxlength="100" required placeholder="Courses de la semaine…" /></label>
+        <label>Montant positif (€)<input type="number" name="amount" min="0.01" max="100000000" step="0.01" required /></label>
+        <label>Catégorie<select name="category"><CategoryOptions /></select></label>
+        <label>Date<input type="date" name="date" min="1900-01-01" max="@Iso(Today)" value="@Iso(Today)" required /></label>
+        <label>Compte destinataire (virement uniquement)<select name="target"><option value="">Aucun</option>@foreach (var a in W.Accounts) { <option value="@a.Id">@a.Name</option> }</select><small>Un virement déplace l’argent, sans créer de revenu ni de dépense.</small></label>
+        <div class="form-actions"><button>Enregistrer l’opération ↗</button></div></form>
+    }</section>
+}
+@code {
+    [SupplyParameterFromQuery(Name = "compte")] public string? AccountFilter { get; set; }
+    [SupplyParameterFromQuery(Name = "mois")] public string? Month { get; set; }
+    [SupplyParameterFromQuery(Name = "recherche")] public string? Search { get; set; }
+    [SupplyParameterFromQuery(Name = "p")] public int Page { get; set; } = 1;
+    private string PageUrl(int p) => $"/operations?p={p}&compte={Uri.EscapeDataString(AccountFilter ?? "")}&mois={Uri.EscapeDataString(Month ?? "")}&recherche={Uri.EscapeDataString(Search ?? "")}";
+}

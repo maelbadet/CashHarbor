@@ -1,0 +1,20 @@
+﻿@page "/connexion"
+@attribute [AllowAnonymous]
+<PageTitle>Connexion · CashHarbor</PageTitle>
+<div class="login-grid">
+    <section class="login-story"><a class="brand" href="/connexion"><img src="/harbor.svg" width="44" height="44" alt="" /><span>CashHarbor<small>BY CODE AND WEB CONSULTING</small></span></a><span class="eyebrow">VOTRE ARGENT, VOTRE CAP.</span><h1>Voyez plus clair.<br />Avancez <em>à deux.</em></h1><p>Les comptes, les projets et les petits pas du quotidien. Tout votre budget, dans un espace à vous.</p><div class="harbor-art" aria-hidden="true"><span>CH</span><div class="wave"></div></div><span class="private-dot">Un espace privé pour votre foyer</span></section>
+    <section class="login-form panel"><span class="eyebrow">BON RETOUR À BORD</span><h2>Votre espace vous attend.</h2><p class="muted">Connectez-vous avec votre accès personnel.</p>
+        @if (Failure == "1") { <div class="notice error" role="alert">Connexion impossible. Vérifiez vos identifiants et utilisez un nouveau code. Après plusieurs essais, attendez 15 minutes.</div> }
+        @if (Changed == "1") { <div class="notice">Mot de passe modifié. Reconnectez-vous avec un nouveau code.</div> }
+        <form method="post" action="/auth/login" class="stack"><AntiforgeryToken />
+            <label>Adresse e-mail<input type="email" name="email" autocomplete="username" maxlength="254" required /></label>
+            <label>Mot de passe<input type="password" name="password" autocomplete="current-password" maxlength="128" required /></label>
+            <label>Code de l’application d’authentification<input name="code" inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" autocomplete="one-time-code" placeholder="000000" required /><small>Un code à six chiffres, renouvelé toutes les 30 secondes.</small></label>
+            <button type="submit">Ouvrir mon espace <span>↗</span></button>
+        </form><p class="fine">Pas d’inscription publique. Les deux accès sont créés directement sur votre serveur.</p>
+    </section>
+</div>
+@code {
+    [SupplyParameterFromQuery(Name = "echec")] public string? Failure { get; set; }
+    [SupplyParameterFromQuery(Name = "modifie")] public string? Changed { get; set; }
+}

@@ -1,0 +1,13 @@
+**/bin
+**/obj
+.git
+.env
+.secrets
+.test-artifacts
+**/App_Data
+**/*.db*
+**/*.pfx
+**/*.pem
+**/*.key
+backups
+artifacts

@@ -1,0 +1,252 @@
+using System.Diagnostics;
+using System.Net;
+using System.Net.Sockets;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
+using System.Text;
+using System.Text.RegularExpressions;
+using CashHarbor.Application;
+using CashHarbor.Domain;
+using CashHarbor.Infra;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+
+// Dependency-free executable regression suite. Real SQLite and real HTTPS host.
+var root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../"));
+var runDirectory = Path.Combine(root, ".test-artifacts", Guid.NewGuid().ToString("N"));
+Directory.CreateDirectory(runDirectory);
+var passed = 0;
+async Task Test(string name, Func<Task> test)
+{
+    try { await test(); Console.WriteLine("PASS " + name); passed++; }
+    catch (Exception ex) { Console.Error.WriteLine("FAIL " + name + ": " + ex); Environment.ExitCode = 1; }
+}
+static void Check(bool value, string message) { if (!value) throw new Exception(message); }
+static async Task Reject(Func<Task> work) { try { await work(); } catch (RuleException) { return; } throw new Exception("Expected a rejected business rule."); }
+var clock = new TestClock(new DateTimeOffset(2026, 11, 17, 12, 0, 0, TimeSpan.Zero));
+var services = new ServiceCollection();
+services.AddLogging(); services.AddSingleton<TimeProvider>(clock); services.AddSingleton<StorageGate>();
+services.AddDataProtection().SetApplicationName("CashHarbor.v1").PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(runDirectory, "keys")));
+services.AddDbContextFactory<VaultDb>(o => o.UseSqlite($"Data Source={Path.Combine(runDirectory, "test.db")}"));
+services.AddScoped<IIdentityService, IdentityService>(); services.AddScoped<IWorkspaceStore, EncryptedWorkspaceStore>(); services.AddScoped<FinanceService>();
+await using var provider = services.BuildServiceProvider(); using var scope = provider.CreateScope();
+var factory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<VaultDb>>();
+await using (var db = await factory.CreateDbContextAsync()) await db.Database.EnsureCreatedAsync();
+var identity = scope.ServiceProvider.GetRequiredService<IIdentityService>();
+var finance = scope.ServiceProvider.GetRequiredService<FinanceService>();
+var secret = Totp.NewSecret(); var password = "A-unique-test-password-123!";
+await identity.ProvisionAsync("first@example.test", password, secret, Totp.Code(secret, clock.Now.ToUnixTimeSeconds() / 30), false);
+Guid actor; await using (var db = await factory.CreateDbContextAsync()) actor = (await db.Users.SingleAsync()).Id;
+clock.Now = clock.Now.AddSeconds(60);
+
+await Test("RFC 6238 reference vectors", () =>
+{
+    var key = Totp.Encode(Encoding.ASCII.GetBytes("12345678901234567890"));
+    var vectors = new (long Time, string Code)[] { (59, "94287082"), (1111111109, "07081804"), (1111111111, "14050471"), (1234567890, "89005924"), (2000000000, "69279037"), (20000000000, "65353130") };
+    foreach (var v in vectors) Check(Totp.Code(key, v.Time / 30, 8) == v.Code, "RFC vector mismatch.");
+    return Task.CompletedTask;
+});
+await Test("MFA, replay prevention, and durable account lockout", async () =>
+{
+    Check(await identity.LoginAsync("first@example.test", password, "bad") == null, "MFA must be mandatory.");
+    var code = Totp.Code(secret, clock.Now.ToUnixTimeSeconds() / 30);
+    var session = await identity.LoginAsync(" FIRST@example.test ", password, code);
+    Check(session != null, "Valid credentials rejected.");
+    Check(await identity.LoginAsync("first@example.test", password, code) == null, "TOTP replay accepted.");
+    await identity.RevokeSessionsAsync(actor);
+    Check(!await identity.IsValidAsync(actor, session!.Version), "Revoked session remains valid.");
+    for (var i = 0; i < 5; i++) await identity.LoginAsync("first@example.test", "wrong", code);
+    clock.Now = clock.Now.AddSeconds(60);
+    using var secondScope = provider.CreateScope(); var secondIdentity = secondScope.ServiceProvider.GetRequiredService<IIdentityService>();
+    Check(await secondIdentity.LoginAsync("first@example.test", password, Totp.Code(secret, clock.Now.ToUnixTimeSeconds() / 30)) == null, "Lockout did not persist.");
+    clock.Now = clock.Now.AddMinutes(16);
+    Check(await secondIdentity.LoginAsync("first@example.test", password, Totp.Code(secret, clock.Now.ToUnixTimeSeconds() / 30)) != null, "Lockout did not expire.");
+});
+await Test("Only two provisioned users; reset revokes sessions", async () =>
+{
+    var secondSecret = Totp.NewSecret();
+    await identity.ProvisionAsync("second@example.test", password, secondSecret, Totp.Code(secondSecret, clock.Now.ToUnixTimeSeconds() / 30), false);
+    await Reject(() => identity.ProvisionAsync("third@example.test", password, secondSecret, Totp.Code(secondSecret, clock.Now.ToUnixTimeSeconds() / 30), false));
+    clock.Now = clock.Now.AddMinutes(1);
+    var old = await identity.LoginAsync("first@example.test", password, Totp.Code(secret, clock.Now.ToUnixTimeSeconds() / 30));
+    var replacement = Totp.NewSecret();
+    await identity.ProvisionAsync("first@example.test", password, replacement, Totp.Code(replacement, clock.Now.ToUnixTimeSeconds() / 30), true);
+    Check(!await identity.IsValidAsync(actor, old!.Version), "Reset did not revoke sessions.");
+});
+var today = finance.Today;
+await finance.AddAccountAsync(actor, "Private Current", "Private Institution", AccountKind.Current, 1000m, today.AddMonths(-3));
+await finance.AddAccountAsync(actor, "Savings", "Bank", AccountKind.Savings, 200m, today.AddMonths(-3));
+var state = await finance.ReadAsync(); var a = state.Accounts[0].Id; var b = state.Accounts[1].Id;
+await Test("Exact money, ledger balances, and historical boundaries", async () =>
+{
+    await finance.AddTransactionAsync(actor, a, "Coffee", "Loisirs", 0.10m, today, EntryKind.Expense);
+    await finance.AddTransactionAsync(actor, a, "Coffee", "Loisirs", 0.20m, today, EntryKind.Expense);
+    var w = await finance.ReadAsync(); Check(w.Balance(a) == 99970, "Money lost precision.");
+    Check(w.Balance(a, today.AddYears(-2)) == 0, "Opening balance leaked before opening date.");
+    await Reject(() => finance.AddTransactionAsync(actor, a, "Bad", "Autres", 0.001m, today, EntryKind.Expense));
+    await Reject(() => finance.AddTransactionAsync(actor, a, "Bad", "Autres", -1m, today, EntryKind.Expense));
+    await Reject(() => finance.AddTransactionAsync(actor, a, "Bad", "Autres", 1m, today.AddDays(1), EntryKind.Expense));
+    await Reject(() => finance.AddTransactionAsync(actor, a, "Bad", "Autres", 1m, today.AddYears(-1), EntryKind.Expense));
+    await Reject(() => finance.AddTransactionAsync(actor, Guid.NewGuid(), "Bad", "Autres", 1m, today, EntryKind.Expense));
+});
+await Test("Atomic transfers and paired deletion preserve net worth", async () =>
+{
+    var before = await finance.ReadAsync(); var total = before.Accounts.Sum(x => before.Balance(x.Id));
+    await finance.AddTransactionAsync(actor, a, "Transfer", "ignored", 150m, today, EntryKind.Transfer, b);
+    var w = await finance.ReadAsync(); Check(w.Accounts.Sum(x => w.Balance(x.Id)) == total, "Transfer changed net worth.");
+    Check(w.Balance(b) == 35000, "Destination not credited.");
+    var t = w.Transactions.Single(x => x.AccountId == a && x.Kind == EntryKind.Transfer);
+    await finance.DeleteTransactionAsync(actor, t.Id);
+    w = await finance.ReadAsync(); Check(!w.Transactions.Any(x => x.TransferId == t.TransferId), "Orphan transfer leg.");
+    Check(w.Balance(b) == 20000, "Transfer removal did not reverse balances.");
+    await Reject(() => finance.AddTransactionAsync(actor, a, "Bad", "Autres", 1m, today, EntryKind.Transfer, a));
+    await Reject(() => finance.DeleteAccountAsync(actor, a));
+});
+await Test("Month-end recurrences are idempotent across short months", async () =>
+{
+    await finance.AddRecurrenceAsync(actor, a, "Monthly", "Logement", -10m, new DateOnly(2026, 8, 31), true);
+    await finance.BookDueAsync(actor); await finance.BookDueAsync(actor);
+    var w = await finance.ReadAsync(); var r = w.Recurrences.Single();
+    Check(r.NextDate == new DateOnly(2026, 11, 30), "Month-end recurrence drifted.");
+    var dates = w.Transactions.Where(t => t.RecurrenceId == r.Id).Select(t => t.Date).ToArray();
+    Check(dates.SequenceEqual(new[] { new DateOnly(2026, 8, 31), new DateOnly(2026, 9, 30), new DateOnly(2026, 10, 31) }), "Recurrence duplicated or skipped.");
+});
+await Test("Concurrent writes do not lose data and unknown actors cannot write", async () =>
+{
+    var before = (await finance.ReadAsync()).Transactions.Count;
+    await Task.WhenAll(Enumerable.Range(0, 12).Select(i => finance.AddTransactionAsync(actor, a, "Concurrent " + i, "Autres", 1m, today, EntryKind.Income)));
+    Check((await finance.ReadAsync()).Transactions.Count == before + 12, "Lost concurrent write.");
+    try { await finance.AddAccountAsync(Guid.NewGuid(), "Intruder", "Bank", AccountKind.Current, 0m, today); throw new Exception("Unknown actor accepted."); } catch (UnauthorizedAccessException) { }
+});
+await Test("Financial content is encrypted and CSV neutralizes formulas", async () =>
+{
+    await finance.AddTransactionAsync(actor, a, "=HYPERLINK(\"bad\")", "Autres", 1m, today, EntryKind.Expense);
+    await using var db = await factory.CreateDbContextAsync(); var row = await db.Vaults.SingleAsync();
+    Check(!row.Payload.Contains("Private Current") && !row.Payload.Contains("HYPERLINK"), "Plaintext financial data.");
+    var csv = FinanceService.ExportCsv(await finance.ReadAsync()); Check(csv.Contains("'\u003dHYPERLINK"), "CSV injection not neutralized.");
+    Check(!await db.Users.AnyAsync(u => u.ProtectedSecret == secret), "Plaintext MFA key.");
+});
+await Test("Invalid goals and invalid updates do not partially persist", async () =>
+{
+    await Reject(() => finance.SaveGoalAsync(actor, null, "Bad", 100m, 101m, null));
+    await Reject(() => finance.SavePolicyAsync(actor, "Bad", 0, 1m));
+    var w = await finance.ReadAsync(); Check(w.Goals.Count == 0 && w.Name == "Notre foyer", "Invalid update partially persisted.");
+});
+await Test("HTTPS host: authentication, CSRF, protected routes, export, MFA and logout", async () =>
+{
+    var httpDirectory = Path.Combine(runDirectory, "http"); Directory.CreateDirectory(httpDirectory);
+    var certPassword = Convert.ToHexString(RandomNumberGenerator.GetBytes(24));
+    using var rsa = RSA.Create(2048);
+    var req = new CertificateRequest("CN=127.0.0.1", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+    var san = new SubjectAlternativeNameBuilder(); san.AddIpAddress(IPAddress.Loopback); req.CertificateExtensions.Add(san.Build());
+    using var cert = req.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(7));
+    var certPath = Path.Combine(httpDirectory, "test.pfx"); var passPath = Path.Combine(httpDirectory, "password");
+    await File.WriteAllBytesAsync(certPath, cert.Export(X509ContentType.Pfx, certPassword)); await File.WriteAllTextAsync(passPath, certPassword);
+    var httpServices = new ServiceCollection(); httpServices.AddLogging();
+    var httpClock = new TestClock(DateTimeOffset.UtcNow.AddMinutes(-2)); httpServices.AddSingleton<TimeProvider>(httpClock); httpServices.AddSingleton<StorageGate>();
+    httpServices.AddDataProtection().SetApplicationName("CashHarbor.v1").PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(httpDirectory, "keys"))).ProtectKeysWithCertificate(X509CertificateLoader.LoadPkcs12FromFile(certPath, certPassword, X509KeyStorageFlags.EphemeralKeySet));
+    httpServices.AddDbContextFactory<VaultDb>(o => o.UseSqlite($"Data Source={Path.Combine(httpDirectory, "cashharbor.db")}")); httpServices.AddScoped<IIdentityService, IdentityService>();
+    httpServices.AddScoped<IWorkspaceStore, EncryptedWorkspaceStore>(); httpServices.AddScoped<FinanceService>();
+    await using var httpProvider = httpServices.BuildServiceProvider();
+    var httpFactory = httpProvider.GetRequiredService<IDbContextFactory<VaultDb>>(); await using (var db = await httpFactory.CreateDbContextAsync()) await db.Database.EnsureCreatedAsync();
+    var httpSecret = Totp.NewSecret(); await httpProvider.GetRequiredService<IIdentityService>().ProvisionAsync("web@example.test", password, httpSecret, Totp.Code(httpSecret, httpClock.Now.ToUnixTimeSeconds() / 30), false);
+    // Synthetic household for representative chart and responsive checks. Never production seed data.
+    var sample = httpProvider.GetRequiredService<FinanceService>(); var sampleDate = sample.Today;
+    Guid sampleActor; await using (var db = await httpFactory.CreateDbContextAsync()) sampleActor = (await db.Users.SingleAsync()).Id;
+    await sample.AddAccountAsync(sampleActor, "Compte commun", "Banque du foyer", AccountKind.Current, 1700m, sampleDate.AddMonths(-6));
+    await sample.AddAccountAsync(sampleActor, "Livret projets", "Banque du foyer", AccountKind.Savings, 7300m, sampleDate.AddMonths(-6));
+    var sampleAccount = (await sample.ReadAsync()).Accounts[0].Id;
+    for (var i = 5; i >= 0; i--)
+    {
+        var date = new DateOnly(sampleDate.Year, sampleDate.Month, Math.Min(10, sampleDate.Day)).AddMonths(-i);
+        await sample.AddTransactionAsync(sampleActor, sampleAccount, "Salaire", "Salaire", 2450m + i * 20, date, EntryKind.Income);
+        await sample.AddTransactionAsync(sampleActor, sampleAccount, "Loyer", "Logement", 850m, date, EntryKind.Expense);
+        await sample.AddTransactionAsync(sampleActor, sampleAccount, "Courses de la semaine", "Courses", 245.35m + i * 12, date, EntryKind.Expense);
+        await sample.AddTransactionAsync(sampleActor, sampleAccount, "Sorties et loisirs", "Loisirs", 120m + i * 17, date, EntryKind.Expense);
+    }
+    await sample.SaveGoalAsync(sampleActor, null, "Notre prochain voyage", 2500m, 870m, sampleDate.AddMonths(8));
+    await sample.AddRecurrenceAsync(sampleActor, sampleAccount, "Loyer", "Logement", -850m, sampleDate.AddDays(5), true);
+    var listener = new TcpListener(IPAddress.Loopback, 0); listener.Start(); var port = ((IPEndPoint)listener.LocalEndpoint).Port; listener.Stop();
+    var origin = $"https://127.0.0.1:{port}";
+    var start = new ProcessStartInfo("dotnet") { WorkingDirectory = Path.Combine(root, "CashHarbor.client"), RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true };
+    start.ArgumentList.Add(Path.Combine(root, "CashHarbor.client/bin/Debug/net10.0/CashHarbor.client.dll"));
+    start.Environment["ASPNETCORE_ENVIRONMENT"] = "Production"; start.Environment["ASPNETCORE_URLS"] = origin;
+    start.Environment["Storage__Directory"] = httpDirectory; start.Environment["Storage__KeyDirectory"] = Path.Combine(httpDirectory, "keys");
+    start.Environment["Security__KeyCertificatePath"] = certPath; start.Environment["Security__KeyCertificatePasswordFile"] = passPath; start.Environment["Security__PublicOrigin"] = origin;
+    start.Environment["Security__TlsCertificatePath"] = certPath; start.Environment["Security__TlsCertificatePasswordFile"] = passPath;
+    start.Environment["Logging__LogLevel__Default"] = "Information";
+    using var process = Process.Start(start)!; var output = process.StandardOutput.ReadToEndAsync(); var errors = process.StandardError.ReadToEndAsync();
+    var cookies = new CookieContainer();
+    // Only this loopback test accepts the temporary self-signed certificate.
+    using var handler = new HttpClientHandler { CookieContainer = cookies, AllowAutoRedirect = false, ServerCertificateCustomValidationCallback = (_, _, _, _) => true };
+    using var client = new HttpClient(handler) { BaseAddress = new Uri(origin), Timeout = TimeSpan.FromSeconds(15) };
+    try
+    {
+        var ready = false; string lastHealth = "no response";
+        for (var i = 0; i < 24 && !process.HasExited; i++) { try { var health = await client.GetAsync("/health"); lastHealth = health.StatusCode + " " + await health.Content.ReadAsStringAsync(); if (health.IsSuccessStatusCode) { ready = true; break; } } catch (HttpRequestException e) { lastHealth = e.ToString(); } await Task.Delay(250); }
+        if (!ready) Console.Error.WriteLine("Health failure: " + lastHealth);
+        if (!ready) throw new Exception("Host did not start: " + (process.HasExited ? await errors : "timeout"));
+        foreach (var route in new[] { "/", "/comptes", "/operations", "/objectifs", "/echeances", "/parametres", "/export/csv", "/export/json" })
+            Check((await client.GetAsync(route)).StatusCode is HttpStatusCode.Redirect or HttpStatusCode.Unauthorized, "Anonymous access to " + route);
+        var login = await client.GetAsync("/connexion"); var html = await login.Content.ReadAsStringAsync(); Check(login.IsSuccessStatusCode && html.Contains("Votre espace vous attend"), "Login page did not render.");
+        var cssPath = WebUtility.HtmlDecode(Regex.Match(html, "rel=\"stylesheet\" href=\"([^\"]+)\"").Groups[1].Value);
+        var cssResponse = await client.GetAsync(cssPath);
+        Check(cssResponse.IsSuccessStatusCode && cssResponse.Content.Headers.ContentType?.MediaType == "text/css" && (await cssResponse.Content.ReadAsStringAsync()).Contains("--cream"), "Stylesheet unavailable: " + cssPath + " / " + cssResponse.StatusCode);
+        Check((await client.GetAsync("/harbor.svg")).IsSuccessStatusCode, "Brand icon unavailable.");
+        Check(login.Headers.Contains("Content-Security-Policy") && login.Headers.CacheControl?.NoStore == true, "Missing security headers.");
+        var token = Token(html);
+        Check((await client.PostAsync("/auth/login", new FormUrlEncodedContent(new Dictionary<string, string> { ["email"] = "web@example.test" }))).StatusCode == HttpStatusCode.BadRequest, "Login CSRF accepted.");
+        var values = new Dictionary<string, string> { ["__RequestVerificationToken"] = token, ["email"] = "web@example.test", ["password"] = password, ["code"] = Totp.Code(httpSecret, DateTimeOffset.UtcNow.ToUnixTimeSeconds() / 30) };
+        var response = await client.PostAsync("/auth/login", new FormUrlEncodedContent(values)); Check(response.StatusCode == HttpStatusCode.Redirect && response.Headers.Location?.OriginalString == "/", "Login failed.");
+        var authCookie = response.Headers.GetValues("Set-Cookie").Single(c => c.StartsWith("__Host-CashHarbor="));
+        Check(authCookie.Contains("secure", StringComparison.OrdinalIgnoreCase) && authCookie.Contains("httponly", StringComparison.OrdinalIgnoreCase) && authCookie.Contains("samesite=strict", StringComparison.OrdinalIgnoreCase), "Cookie is missing protections.");
+        foreach (var route in new[] { "/", "/comptes", "/operations", "/objectifs", "/echeances", "/parametres" }) Check((await client.GetAsync(route)).IsSuccessStatusCode, "Authenticated route failed: " + route);
+        Check((await client.PostAsync("/actions/account-add", new FormUrlEncodedContent(new Dictionary<string, string>()))).StatusCode == HttpStatusCode.BadRequest, "Write CSRF accepted.");
+        html = await client.GetStringAsync("/comptes"); token = Token(html);
+        response = await client.PostAsync("/actions/account-add", new FormUrlEncodedContent(new Dictionary<string, string> { ["__RequestVerificationToken"] = token, ["name"] = "Web Account", ["institution"] = "Bank", ["kind"] = "Current", ["opening"] = "123.45", ["date"] = DateTime.Today.ToString("yyyy-MM-dd") }));
+        Check(response.StatusCode == HttpStatusCode.Redirect && response.Headers.Location!.OriginalString.Contains("succes=1"), "Account creation HTTP failed.");
+        Check((await client.GetStringAsync("/comptes")).Contains("Web Account"), "Created account not rendered.");
+        Check((await client.GetAsync("/export/json")).IsSuccessStatusCode, "Export failed.");
+        if (Environment.GetEnvironmentVariable("CASHHARBOR_BROWSER") is { Length: > 0 })
+        {
+            var fixturePath = Path.Combine(httpDirectory, "ui-fixture.json");
+            var cookieValues = cookies.GetCookies(new Uri(origin)).Cast<Cookie>().Select(c => new { name = c.Name, value = c.Value, url = origin, secure = c.Secure, httpOnly = c.HttpOnly, sameSite = "Strict" }).ToArray();
+            await File.WriteAllTextAsync(fixturePath, System.Text.Json.JsonSerializer.Serialize(new { origin, cookies = cookieValues }));
+            try
+            {
+                var browserStart = new ProcessStartInfo("node") { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
+                browserStart.ArgumentList.Add(Path.Combine(root, "scripts/verify-ui.mjs")); browserStart.ArgumentList.Add(fixturePath);
+                using var browser = Process.Start(browserStart)!; var browserOutput = browser.StandardOutput.ReadToEndAsync(); var browserErrors = browser.StandardError.ReadToEndAsync();
+                await browser.WaitForExitAsync(); Console.WriteLine(await browserOutput); if (browser.ExitCode != 0) Console.Error.WriteLine(await browserErrors); Check(browser.ExitCode == 0, "Browser verification failed.");
+            }
+            finally { File.Delete(fixturePath); }
+        }
+        using var badHost = new HttpRequestMessage(HttpMethod.Get, "/connexion"); badHost.Headers.Host = "attacker.example"; Check((await client.SendAsync(badHost)).StatusCode == HttpStatusCode.BadRequest, "Host validation bypass.");
+        var oldCookieHeader = cookies.GetCookieHeader(new Uri(origin));
+        html = await client.GetStringAsync("/"); token = Token(html);
+        Check((await client.PostAsync("/auth/logout", new FormUrlEncodedContent(new Dictionary<string, string> { ["__RequestVerificationToken"] = token }))).StatusCode == HttpStatusCode.Redirect, "Logout failed.");
+        using var stolenHandler = new HttpClientHandler { UseCookies = false, AllowAutoRedirect = false, ServerCertificateCustomValidationCallback = (_, _, _, _) => true };
+        using var stolenClient = new HttpClient(stolenHandler) { BaseAddress = new Uri(origin) }; stolenClient.DefaultRequestHeaders.Add("Cookie", oldCookieHeader);
+        Check((await stolenClient.GetAsync("/comptes")).StatusCode == HttpStatusCode.Redirect, "Logged-out cookie was not revoked server-side.");
+    }
+    catch
+    {
+        if (!process.HasExited) process.Kill(true); await process.WaitForExitAsync(); Console.Error.WriteLine(await output + await errors); throw;
+    }
+    finally { if (!process.HasExited) process.Kill(true); await process.WaitForExitAsync(); }
+});
+Console.WriteLine($"{passed}/10 suites passed. Temporary fixtures: {runDirectory}");
+return Environment.ExitCode;
+
+static string Token(string html)
+{
+    var match = Regex.Match(html, "name=\"__RequestVerificationToken\" value=\"([^\"]+)\"");
+    if (!match.Success) throw new Exception("Missing antiforgery token."); return WebUtility.HtmlDecode(match.Groups[1].Value);
+}
+sealed class TestClock(DateTimeOffset now) : TimeProvider
+{
+    public DateTimeOffset Now { get; set; } = now;
+    public override DateTimeOffset GetUtcNow() => Now;
+    public override TimeZoneInfo LocalTimeZone => TimeZoneInfo.Utc;
+}

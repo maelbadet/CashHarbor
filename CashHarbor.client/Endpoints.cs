@@ -1,0 +1,75 @@
+using System.Globalization;
+using System.Security.Claims;
+using System.Text;
+using System.Text.Json;
+using CashHarbor.Application;
+using CashHarbor.Domain;
+using Microsoft.AspNetCore.Antiforgery;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
+namespace CashHarbor.client;
+public static class Endpoints
+{
+    public static void MapCashHarborEndpoints(this WebApplication app)
+    {
+        app.MapPost("/auth/login", async (HttpContext http, IAntiforgery csrf, IIdentityService identity) =>
+        {
+            try { await csrf.ValidateRequestAsync(http); } catch (AntiforgeryValidationException) { return Results.BadRequest("Formulaire expiré. Rechargez la page."); }
+            var form = await http.Request.ReadFormAsync();
+            var session = await identity.LoginAsync(form["email"].ToString(), form["password"].ToString(), form["code"].ToString());
+            if (session == null) return Results.LocalRedirect("/connexion?echec=1");
+            var principal = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, session.Id.ToString()), new Claim(ClaimTypes.Name, session.Email), new Claim("version", session.Version)], CookieAuthenticationDefaults.AuthenticationScheme));
+            await http.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal, new AuthenticationProperties { IsPersistent = false, AllowRefresh = false });
+            return Results.LocalRedirect("/");
+        }).RequireRateLimiting("login").AllowAnonymous();
+        app.MapPost("/auth/logout", async (HttpContext http, IAntiforgery csrf, IIdentityService identity) =>
+        {
+            try { await csrf.ValidateRequestAsync(http); } catch (AntiforgeryValidationException) { return Results.BadRequest(); }
+            await identity.RevokeSessionsAsync(Guid.Parse(http.User.FindFirstValue(ClaimTypes.NameIdentifier)!));
+            await http.SignOutAsync(); return Results.LocalRedirect("/connexion");
+        }).RequireAuthorization();
+        app.MapPost("/actions/{action}", WriteAsync).RequireAuthorization().RequireRateLimiting("write");
+        app.MapGet("/export/{format}", async (string format, FinanceService finance) =>
+        {
+            var w = await finance.ReadAsync();
+            return format switch
+            {
+                "csv" => Results.File(Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(FinanceService.ExportCsv(w))).ToArray(), "text/csv; charset=utf-8", "cashharbor-operations.csv"),
+                "json" => Results.File(JsonSerializer.SerializeToUtf8Bytes(w, new JsonSerializerOptions { WriteIndented = true }), "application/json", "cashharbor-foyer.json"),
+                _ => Results.NotFound()
+            };
+        }).RequireAuthorization().RequireRateLimiting("write");
+    }
+    private static async Task<IResult> WriteAsync(string action, HttpContext http, IAntiforgery csrf, FinanceService finance, IIdentityService identity)
+    {
+        try { await csrf.ValidateRequestAsync(http); } catch (AntiforgeryValidationException) { return Results.BadRequest("Formulaire expiré. Rechargez la page."); }
+        var f = await http.Request.ReadFormAsync(); var actor = Guid.Parse(http.User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        string S(string name) => f[name].ToString(); Guid G(string name) => Guid.Parse(S(name));
+        Guid? O(string name) => string.IsNullOrEmpty(S(name)) ? null : G(name);
+        decimal M(string name) => decimal.Parse(S(name), NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture);
+        DateOnly D(string name) => DateOnly.ParseExact(S(name), "yyyy-MM-dd", CultureInfo.InvariantCulture);
+        var back = action.Split('-')[0] switch { "account" => "/comptes", "transaction" => "/operations", "goal" => "/objectifs", "recurrence" => "/echeances", _ => "/parametres" };
+        try
+        {
+            switch (action)
+            {
+                case "account-add": await finance.AddAccountAsync(actor, S("name"), S("institution"), Enum.Parse<AccountKind>(S("kind")), M("opening"), D("date")); break;
+                case "account-edit": await finance.RenameAccountAsync(actor, G("id"), S("name"), S("institution")); break;
+                case "account-delete": await finance.DeleteAccountAsync(actor, G("id")); break;
+                case "transaction-add": await finance.AddTransactionAsync(actor, G("account"), S("label"), S("category"), M("amount"), D("date"), Enum.Parse<EntryKind>(S("kind")), O("target")); break;
+                case "transaction-delete": await finance.DeleteTransactionAsync(actor, G("id")); break;
+                case "goal-save": await finance.SaveGoalAsync(actor, O("id"), S("name"), M("target"), M("saved"), string.IsNullOrEmpty(S("deadline")) ? null : D("deadline")); break;
+                case "goal-delete": await finance.DeleteGoalAsync(actor, G("id")); break;
+                case "recurrence-add": await finance.AddRecurrenceAsync(actor, G("account"), S("label"), S("category"), M("amount"), D("next"), S("essential") == "on"); break;
+                case "recurrence-delete": await finance.DeleteRecurrenceAsync(actor, G("id")); break;
+                case "recurrence-book": await finance.BookDueAsync(actor); break;
+                case "settings-save": await finance.SavePolicyAsync(actor, S("name"), int.Parse(S("months"), CultureInfo.InvariantCulture), M("buffer")); break;
+                case "password-change": await identity.ChangePasswordAsync(actor, S("current"), S("password"), S("code")); await http.SignOutAsync(); return Results.LocalRedirect("/connexion?modifie=1");
+                default: return Results.NotFound();
+            }
+            return Results.LocalRedirect(back + "?succes=1");
+        }
+        catch (RuleException e) { return Results.LocalRedirect(back + "?erreur=" + Uri.EscapeDataString(e.Message)); }
+        catch (Exception e) when (e is FormatException or OverflowException or ArgumentException) { return Results.LocalRedirect(back + "?erreur=" + Uri.EscapeDataString("Vérifiez les champs du formulaire : montant, date et sélection.")); }
+    }
+}

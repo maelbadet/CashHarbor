@@ -1,0 +1,40 @@
+﻿@page "/"
+@attribute [Authorize]
+@inherits FinancePage
+<PageTitle>Vue d’ensemble · CashHarbor</PageTitle>
+@if (W != null)
+{
+    var month = new DateOnly(Today.Year, Today.Month, 1);
+    var entries = W.Transactions.Where(t => t.Date >= month && t.Kind != EntryKind.Transfer).ToArray();
+    var income = entries.Where(t => t.Cents > 0).Sum(t => t.Cents);
+    var expense = -entries.Where(t => t.Cents < 0).Sum(t => t.Cents);
+    var total = W.Accounts.Sum(a => W.Balance(a.Id));
+    var savings = W.Accounts.Where(a => a.Kind == AccountKind.Savings).Sum(a => W.Balance(a.Id));
+    <header class="page-header"><div><span class="eyebrow">@W.Name · @Today.ToString("MMMM yyyy", CultureInfo.GetCultureInfo("fr-FR"))</span><h1>Un cap sur vos finances<span class="orange">.</span></h1><p>Vos comptes réunis. Vos projets en vue.</p></div><a class="button" href="/operations#ajouter">Ajouter une opération ↗</a></header>
+    <Notice />
+    <section class="stats" aria-label="Résumé du foyer">
+        <article class="stat dark"><span>Patrimoine suivi</span><strong>@Euro(total)</strong><small>@W.Accounts.Count compte(s) réunis</small></article>
+        <article class="stat"><span>Revenus du mois</span><strong>@Euro(income)</strong><small>Hors virements internes</small></article>
+        <article class="stat"><span>Dépenses du mois</span><strong>@Euro(expense)</strong><small>Du @month.ToString("dd MMM", CultureInfo.GetCultureInfo("fr-FR")) à aujourd’hui</small></article>
+        <article class="stat"><span>Épargne suivie</span><strong>@Euro(savings)</strong><small>Sur vos comptes d’épargne</small></article>
+    </section>
+    @if (W.Accounts.Count == 0)
+    { <section class="welcome panel"><span class="eyebrow">ON PREND LE LARGE ?</span><h2>Votre première étape : un compte.</h2><p>Ajoutez votre compte courant et son solde de départ. Vos graphiques prendront forme au fil des opérations.</p><a class="button" href="/comptes#ajouter">Ajouter notre premier compte ↗</a><span class="welcome-mark" aria-hidden="true">↗</span></section> }
+    <div class="grid-two">
+        <section class="panel"><div class="section-heading"><div><span class="eyebrow">LES SIX DERNIERS MOIS</span><h2>Votre rythme financier</h2></div><div class="legend"><span class="legend-income">Revenus</span><span class="legend-expense">Dépenses</span></div></div><CashFlowChart Workspace="W" Today="Today" /></section>
+        <section class="panel"><div class="section-heading"><div><span class="eyebrow">CE MOIS-CI</span><h2>Où va votre argent ?</h2></div></div>
+        @if (expense == 0) { <div class="empty"><span class="empty-symbol">◌</span><p>Vos dépenses apparaîtront ici,<br />catégorie par catégorie.</p></div> }
+        else { <div class="category-list">@foreach (var category in entries.Where(t => t.Cents < 0).GroupBy(t => t.Category).OrderByDescending(g => -g.Sum(t => t.Cents))) { var value = -category.Sum(t => t.Cents); <div><div class="row-between"><span>@category.Key</span><strong>@Euro(value)</strong></div><meter min="0" max="@expense" value="@value" aria-label="@category.Key"></meter><small>@((value * 100m / expense).ToString("0")) % des dépenses</small></div> }</div> }
+        </section>
+    </div>
+    <div class="grid-two">
+        <section class="panel"><div class="section-heading"><div><span class="eyebrow">AU QUOTIDIEN</span><h2>Derniers mouvements</h2></div><a href="/operations">Tout voir ↗</a></div>
+        @if (W.Transactions.Count == 0) { <p class="empty">Aucune opération pour le moment.</p> }
+        else { <div class="movements">@foreach (var t in W.Transactions.OrderByDescending(t => t.Date).Take(5)) { <div class="movement"><span class="movement-icon">@(t.Cents > 0 ? "↙" : "↗")</span><div><strong>@t.Label</strong><small>@W.Accounts.Single(a => a.Id == t.AccountId).Name · @t.Date.ToString("dd/MM")</small></div><strong class="@(t.Cents > 0 ? "positive" : "")">@(t.Cents > 0 ? "+" : "")@Euro(t.Cents)</strong></div> }</div> }
+        </section>
+        <section class="panel goal-preview"><div class="section-heading"><div><span class="eyebrow">ENVIE D’ALLER PLUS LOIN</span><h2>Vos projets, petit à petit.</h2></div><a href="/objectifs">Voir les objectifs ↗</a></div>
+        @if (W.Goals.Count == 0) { <p>Un voyage, un nouveau départ ou simplement plus de tranquillité. Donnez un nom à votre prochain projet.</p><a class="button secondary" href="/objectifs#ajouter">Créer un objectif</a> }
+        else { @foreach (var g in W.Goals.Take(3)) { <div class="goal-mini"><div class="row-between"><strong>@g.Name</strong><span>@Euro(g.SavedCents) / @Euro(g.TargetCents)</span></div><meter min="0" max="@g.TargetCents" value="@g.SavedCents" aria-label="@g.Name"></meter></div> } }
+        </section>
+    </div>
+}

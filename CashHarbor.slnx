@@ -1,0 +1,8 @@
+<Solution>
+  <Project Path="CashHarbor.Application/CashHarbor.Application.csproj" />
+  <Project Path="CashHarbor.Tests/CashHarbor.Tests.csproj" />
+  <Project Path="CashHarbor.api/CashHarbor.api.csproj" />
+  <Project Path="CashHarbor.client/CashHarbor.client.csproj" />
+  <Project Path="CashHarbor.Domain/CashHarbor.Domain.csproj" />
+  <Project Path="CashHarbor.Infra/CashHarbor.Infra.csproj" />
+</Solution>

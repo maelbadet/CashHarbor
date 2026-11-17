@@ -1,0 +1,20 @@
+﻿@inherits LayoutComponentBase
+<a class="skip" href="#content">Aller au contenu</a>
+<div class="shell">
+    <AuthorizeView><Authorized>
+        <aside class="sidebar">
+            <a class="brand" href="/"><img src="/harbor.svg" alt="" width="38" height="38" /><span>CashHarbor<small>CODE AND WEB CONSULTING</small></span></a>
+            <span class="nav-label">NOTRE ESPACE</span>
+            <nav aria-label="Navigation principale">
+                <NavLink href="/" Match="NavLinkMatch.All"><span>◫</span> Vue d’ensemble</NavLink>
+                <NavLink href="/comptes"><span>▤</span> Comptes</NavLink>
+                <NavLink href="/operations"><span>⇄</span> Opérations</NavLink>
+                <NavLink href="/objectifs"><span>◎</span> Objectifs</NavLink>
+                <NavLink href="/echeances"><span>↻</span> Échéances</NavLink>
+                <NavLink href="/parametres"><span>⚙</span> Paramètres</NavLink>
+            </nav>
+            <div class="sidebar-bottom"><span class="private-dot">Espace privé · 2 personnes</span><p>Un cap commun.<br />Des finances plus claires.</p><form method="post" action="/auth/logout"><AntiforgeryToken /><button class="logout" type="submit">Se déconnecter ↗</button></form></div>
+        </aside>
+    </Authorized></AuthorizeView>
+    <main id="content" class="main">@Body<footer>CashHarbor <span>Conçu pour votre quotidien, par CWC.</span></footer></main>
+</div>
