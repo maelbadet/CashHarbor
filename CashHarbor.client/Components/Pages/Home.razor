@@ -67,7 +67,7 @@
         FormRequest = new(new DateOnly(Today.Year, Today.Month, 1).AddMonths(-5), Today);
         try
         {
-            FormRequest = AnalyticsFilters.Parse(HttpContext.HttpContext!.Request.Query, Today);
+            FormRequest = AnalyticsFilters.Parse(HttpContext.HttpContext!.Request.Query, Today) with { Scope = Space.Scope };
             Period = HttpContext.HttpContext.Request.Query["periode"].FirstOrDefault() ?? "6m";
             Report = FinancialAnalytics.Build(W!, FormRequest, Today);
         }

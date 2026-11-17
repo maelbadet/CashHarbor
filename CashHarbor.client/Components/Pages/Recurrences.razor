@@ -1,4 +1,4 @@
-﻿@page "/echeances"
+@page "/echeances"
 @attribute [Authorize]
 @inherits FinancePage
 <PageTitle>Échéances · CashHarbor</PageTitle>
@@ -11,13 +11,13 @@
     {
         <section class="panel"><div class="section-heading"><div><span class="eyebrow">REMBOURSEMENTS DE CRÉDIT</span><h2>Prochaines échéances de vos prêts</h2></div><a href="/prets">Gérer les prêts ↗</a></div><p class="fine">Ces mensualités se confirment depuis le prêt. Si une récurrence bancaire les comptabilise déjà, choisissez le suivi du prêt sans créer une seconde dépense.</p><div class="table-scroll"><table><thead><tr><th>Prêt</th><th>Visibilité</th><th>Date prévue</th><th>Montant avec assurance</th><th>Action</th></tr></thead><tbody>@foreach (var loan in W.Loans) { var schedule = LoanCalculator.Schedule(loan); var paid = LoanCalculator.PaidCount(loan, W.LoanPayments); if (paid >= schedule.Count) { continue; } var next = schedule[paid]; <tr><td>@loan.Name</td><td>@Visibility(loan.Visibility)</td><td>@next.DueDate.ToString("dd/MM/yyyy")</td><td>@Euro(next.TotalCents)</td><td><a href="/prets/@loan.Id">Vérifier et confirmer</a></td></tr> }</tbody></table></div></section>
     }
-    <section class="panel section-heading"><div><h2>@due récurrence(s) à comptabiliser</h2><p class="muted">Vérifiez vos comptes avant de confirmer. Toutes les échéances mensuelles et annuelles arrivées à terme seront enregistrées une seule fois, à leur montant complet.</p></div><form method="post" action="/actions/recurrence-book"><AntiforgeryToken /><button disabled="@(due == 0)">Comptabiliser les échéances</button></form></section>
+    <section class="panel section-heading"><div><h2>@due récurrence(s) à comptabiliser</h2><p class="muted">Vérifiez vos comptes avant de confirmer. Toutes les échéances mensuelles et annuelles arrivées à terme seront enregistrées une seule fois, à leur montant complet.</p></div><form method="post" action="/actions/recurrence-book"><AntiforgeryToken /><SpaceField /><button disabled="@(due == 0)">Comptabiliser les échéances</button></form></section>
     <section class="panel"><div class="table-scroll"><table><thead><tr><th>Prochaine date</th><th>Libellé</th><th>Compte</th><th>Fréquence</th><th>Montant par échéance</th><th>Action</th></tr></thead><tbody>
     @foreach (var r in W.Recurrences.OrderBy(r => r.NextDate))
     {
         <tr><td class="nowrap">@r.NextDate.ToString("dd/MM/yyyy")</td><td><strong>@r.Label</strong><small>@r.Category @(r.Essential ? "· Essentiel" : "")</small></td><td>@W.Accounts.Single(a => a.Id == r.AccountId).Name</td><td><span class="tag">@(r.Frequency == RecurrenceFrequency.Yearly ? "Annuelle" : "Mensuelle")</span></td><td class="nowrap">@Euro(r.Cents)</td><td>
             <details><summary>Modifier</summary><p>Le compte reste identique. Les opérations déjà comptabilisées sont conservées ; seuls les prochains passages changent.</p><RecurrenceForm Value="r" Today="Today" /></details>
-            <details class="danger-zone"><summary>Arrêter</summary><p>Les opérations déjà comptabilisées sont conservées.</p><form method="post" action="/actions/recurrence-delete"><AntiforgeryToken /><input type="hidden" name="id" value="@r.Id" /><button class="danger small-button">Confirmer</button></form></details>
+            <details class="danger-zone"><summary>Arrêter</summary><p>Les opérations déjà comptabilisées sont conservées.</p><form method="post" action="/actions/recurrence-delete"><AntiforgeryToken /><SpaceField /><input type="hidden" name="id" value="@r.Id" /><button class="danger small-button">Confirmer</button></form></details>
         </td></tr>
     }
     @if (W.Recurrences.Count == 0) { <tr><td colspan="6" class="empty">Aucune échéance. Ajoutez un loyer mensuel, une facture d’eau annuelle ou un salaire.</td></tr> }

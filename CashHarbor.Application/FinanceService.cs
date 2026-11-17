@@ -116,9 +116,11 @@ public sealed class FinanceService(IWorkspaceStore store, TimeProvider clock)
     public static long EssentialMonthlyCents(Workspace w) => checked((long)decimal.Round(-w.Recurrences.Where(r => r.Essential && r.Cents < 0 && r.Active).Sum(r => r.MonthlyEquivalentCents), 0, MidpointRounding.AwayFromZero));
     public Task DeleteRecurrenceAsync(Guid actor, Guid id) => store.UpdateAsync(actor, "recurrence.deleted", w => { if (w.Recurrences.RemoveAll(r => r.Id == id) == 0) throw new RuleException("Échéance introuvable."); });
     // Explicit confirmation only: no background duplication or external bank instruction.
-    public Task BookDueAsync(Guid actor) => store.UpdateAsync(actor, "recurrence.booked", w =>
+    public Task BookDueAsync(Guid actor, AccountVisibility? visibility = null) => store.UpdateAsync(actor, "recurrence.booked", w =>
     {
-        foreach (var r in w.Recurrences.ToArray())
+        if (visibility != null && visibility is not (AccountVisibility.Personal or AccountVisibility.Joint)) throw new RuleException("Espace inconnu.");
+        var selectedAccounts = w.Accounts.Where(a => visibility == null || a.Visibility == visibility).Select(a => a.Id).ToHashSet();
+        foreach (var r in w.Recurrences.Where(r => selectedAccounts.Contains(r.AccountId)).ToArray())
         {
             var next = r.NextDate; var count = 0;
             while (r.Active && next <= Today)
@@ -131,7 +133,7 @@ public sealed class FinanceService(IWorkspaceStore store, TimeProvider clock)
             }
             w.Recurrences[w.Recurrences.IndexOf(r)] = r with { NextDate = next };
         }
-        foreach (var id in w.Recurrences.Select(r => r.AccountId).Distinct()) Reconcile(w, id);
+        foreach (var id in w.Recurrences.Select(r => r.AccountId).Distinct().Where(selectedAccounts.Contains)) Reconcile(w, id);
     });
     // Preserve observed balances even when a missing older entry is entered later.
     internal static void Reconcile(Workspace w, Guid account)

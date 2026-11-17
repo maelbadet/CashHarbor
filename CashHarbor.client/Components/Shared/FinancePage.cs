@@ -8,10 +8,11 @@ public abstract class FinancePage : ComponentBase
 {
     [Inject] protected FinanceService Finance { get; set; } = default!;
     [Inject] protected IHttpContextAccessor HttpContext { get; set; } = default!;
+    [Inject] protected SpaceContext Space { get; set; } = default!;
     protected Guid Actor => Guid.Parse(HttpContext.HttpContext?.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? throw new UnauthorizedAccessException());
     protected Workspace? W;
     protected DateOnly Today => Finance.Today;
-    protected override async Task OnInitializedAsync() => W = await Finance.ReadAsync(Actor);
+    protected override async Task OnInitializedAsync() => W = Space.Select(await Finance.ReadAsync(Actor));
     public static string Visibility(AccountVisibility visibility) => visibility == AccountVisibility.Joint ? "Commun · vous deux" : "Personnel · vous uniquement";
     public static string Euro(long cents) => (cents / 100m).ToString("N2", CultureInfo.GetCultureInfo("fr-FR")) + " €";
     public static string Amount(long cents) => (cents / 100m).ToString("0.00", CultureInfo.InvariantCulture);

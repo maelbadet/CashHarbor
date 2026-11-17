@@ -1,4 +1,4 @@
-﻿@page "/connexion"
+@page "/connexion"
 @attribute [AllowAnonymous]
 <PageTitle>Connexion · CashHarbor</PageTitle>
 <div class="login-grid">
@@ -6,7 +6,7 @@
     <section class="login-form panel"><span class="eyebrow">BON RETOUR À BORD</span><h2>Votre espace vous attend.</h2><p class="muted">Connectez-vous avec votre accès personnel.</p>
         @if (Failure == "1") { <div class="notice error" role="alert">Connexion impossible. Vérifiez vos identifiants et utilisez un nouveau code. Après plusieurs essais, attendez 15 minutes.</div> }
         @if (Changed == "1") { <div class="notice">Mot de passe modifié. Reconnectez-vous avec un nouveau code.</div> }
-        <form method="post" action="/auth/login" class="stack"><AntiforgeryToken />
+        <form method="post" action="/auth/login" class="stack"><AntiforgeryToken /><SpaceField />
             <label>Adresse e-mail<input type="email" name="email" autocomplete="username" maxlength="254" required /></label>
             <label>Mot de passe<input type="password" name="password" autocomplete="current-password" maxlength="128" required /></label>
             <label>Code de l’application d’authentification<input name="code" inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" autocomplete="one-time-code" placeholder="000000" required /><small>Un code à six chiffres, renouvelé toutes les 30 secondes.</small></label>

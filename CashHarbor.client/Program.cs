@@ -15,6 +15,7 @@ using Microsoft.EntityFrameworkCore;
 var builder = WebApplication.CreateBuilder(args);
 var dataDirectory = Path.GetFullPath(builder.Configuration["Storage:Directory"] ?? Path.Combine(builder.Environment.ContentRootPath, "App_Data"));
 Directory.CreateDirectory(dataDirectory);
+builder.Configuration["Storage:Directory"] = dataDirectory;
 var keyDirectory = Path.GetFullPath(builder.Configuration["Storage:KeyDirectory"] ?? Path.Combine(dataDirectory, "keys"));
 Directory.CreateDirectory(keyDirectory);
 var protection = builder.Services.AddDataProtection().SetApplicationName("CashHarbor.v1").PersistKeysToFileSystem(new DirectoryInfo(keyDirectory));
@@ -39,7 +40,12 @@ builder.Services.AddSingleton<StorageGate>(); builder.Services.AddSingleton(Time
 builder.Services.AddScoped<IWorkspaceStore, EncryptedWorkspaceStore>(); builder.Services.AddScoped<IIdentityService, IdentityService>(); builder.Services.AddScoped<FinanceService>();
 builder.Services.AddScoped<LegacyAccessMigrator>();
 builder.Services.AddScoped<LoanService>();
+builder.Services.AddSingleton<ReminderGate>();
+builder.Services.AddScoped<IReminderService, ReminderService>();
+builder.Services.AddSingleton<IReminderMailer, SmtpReminderMailer>();
+builder.Services.AddHostedService<ReminderWorker>();
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<SpaceContext>();
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme).AddCookie(options =>
 {
     options.Cookie.Name = "__Host-CashHarbor"; options.Cookie.HttpOnly = true; options.Cookie.SecurePolicy = CookieSecurePolicy.Always; options.Cookie.SameSite = SameSiteMode.Strict;
@@ -93,5 +99,14 @@ app.Use(async (context, next) =>
 });
 app.UseStaticFiles();
 app.UseAuthentication(); app.UseAuthorization(); app.UseRateLimiter(); app.UseAntiforgery();
+app.Use(async (context, next) =>
+{
+    var key = context.Request.Query["espace"].ToString();
+    if (key.Length > 0 && key is not ("personnel" or "couple")) { context.Response.StatusCode = 400; return; }
+    if (context.User.Identity?.IsAuthenticated == true && HttpMethods.IsGet(context.Request.Method) &&
+        (key.Length > 0 || context.Request.Query["vue"].ToString() is "commun" or "personnel"))
+        context.Response.Cookies.Append(SpaceContext.CookieName, SpaceContext.Resolve(context.Request), new CookieOptions { HttpOnly = true, Secure = true, SameSite = SameSiteMode.Strict, Path = "/", MaxAge = TimeSpan.FromDays(180) });
+    await next();
+});
 app.MapGet("/health", () => Results.Text("ok")); app.MapCashHarborEndpoints(); app.MapRazorComponents<App>(); app.Run();
 public partial class Program;

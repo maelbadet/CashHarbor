@@ -30,4 +30,6 @@ Une seule instance à la fois. La sérialisation en mémoire n’est pas un verr
 
 ## Rapports financiers
 
+Les rappels utilisent les contrats `IReminderService` et `IReminderMailer` dans Application, avec une règle de calendrier testable. Infra fournit le stockage chiffré atomique `reminders.enc` et le transport MailKit avec TLS obligatoire. L’hôte exécute un `BackgroundService` toutes les quinze minutes. Le destinataire provient de l’identité en base, et non du formulaire. Les préférences et statuts sont isolés par utilisateur ; le SMTP est commun aux deux accès. Aucun calcul ni donnée financière n’entre dans le message. Voir [la configuration](EMAIL-REMINDERS.md).
+
 `FinancialAnalytics` construit des rapports en lecture seule depuis la tranche de `Workspace` déjà autorisée. Les calculs restent en centimes dans Application : reconstitution quotidienne des soldes, flux regroupés et comparaison sur une durée identique. Les composants Razor produisent les SVG et tableaux ; `charts.js`, servi localement sous la CSP existante, ajoute le curseur, les légendes et l’export SVG. Aucun changement du schéma v4 ni dépendance externe n’est nécessaire. Voir [le guide](DASHBOARD.md).

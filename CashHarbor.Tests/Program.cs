@@ -77,6 +77,8 @@ await Test("Only two provisioned users; reset revokes sessions", async () =>
 });
 var today = finance.Today;
 await Test("Exact analytics, scopes, partial periods, grouping and CSV", AnalyticsRegression.Run);
+await Test("Separate personal/couple spaces, expenses, exports and recurrence booking", SpaceRegression.Run);
+await Test("Monthly reminders: consent, encryption, Paris time, retry and persistent deduplication", () => ReminderRegression.Run(factory, provider.GetRequiredService<IDataProtectionProvider>(), runDirectory));
 await finance.AddAccountAsync(actor, "Private Current", "Private Institution", AccountKind.Current, 1000m, today.AddMonths(-3));
 await finance.AddAccountAsync(actor, "Savings", "Bank", AccountKind.Savings, 200m, today.AddMonths(-3));
 var state = await finance.ReadAsync(actor); var a = state.Accounts[0].Id; var b = state.Accounts[1].Id;

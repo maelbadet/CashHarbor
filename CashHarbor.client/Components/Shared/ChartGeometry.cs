@@ -25,6 +25,16 @@ public sealed record ChartAxis(decimal Minimum, decimal Maximum, decimal Step)
 }
 public static class ChartGeometry
 {
+    // Calendar boundaries instead of arbitrary equally spaced days such as 5 July / 8 August.
+    public static int[] DateLabels(IReadOnlyList<DateOnly> dates)
+    {
+        if (dates.Count <= 1) return dates.Count == 0 ? [] : [0];
+        var months = Enumerable.Range(0, dates.Count).Where(i => i == 0 || dates[i].Month != dates[i - 1].Month || dates[i].Year != dates[i - 1].Year).ToArray();
+        var candidates = months.Length >= 3 ? months : Enumerable.Range(0, Math.Min(4, dates.Count)).Select(i => (int)decimal.Round(i * (dates.Count - 1m) / (Math.Min(4, dates.Count) - 1))).ToArray();
+        var stride = Math.Max(1, (int)Math.Ceiling(candidates.Length / 5m));
+        // Keep the last label far enough from its neighbour on a phone.
+        return candidates.Where((_, i) => i % stride == 0).Where(i => i == 0 || i >= dates.Count / 8).ToArray();
+    }
     public const decimal Left = 98m;
     public const decimal Width = 850m;
     public static string N(decimal value) => value.ToString("0.###", CultureInfo.InvariantCulture);

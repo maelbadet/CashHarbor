@@ -2,6 +2,8 @@
 
 Le [guide du tableau de bord](docs/DASHBOARD.md) décrit les graphiques, les filtres et la mise à jour Docker.
 
+Les [rappels mensuels par SMTP](docs/EMAIL-REMINDERS.md) se configurent dans Paramètres, avec une activation individuelle pour chaque utilisateur.
+
 Application privée .NET 10 pour un foyer de deux personnes. Interface française responsive dans le thème demandé : noir #101010, panneaux #1a1a1a, rouge #ef4444 et Segoe UI / Inter / sans-serif.
 
 ## Fonctionnalités
@@ -13,7 +15,7 @@ Application privée .NET 10 pour un foyer de deux personnes. Interface français
 - Tableau de bord, évolution des soldes sur six mois, relevés de valorisation, flux mensuels, répartition des dépenses et objectifs personnels ou communs.
 - Échéances mensuelles ou annuelles, modifiables et comptabilisées sur confirmation, sans doublon à la relance. Les dépenses annuelles essentielles sont mensualisées uniquement pour l’indicateur de réserve.
 - Réserve de précaution paramétrable, exports CSV et JSON, journal d’activité.
-- Prêts personnels ou communs à taux fixe : taux nominal, TAEG informatif, trois modes d’assurance, frais, échéancier exportable, reprise des mensualités déjà payées et confirmation sans double débit. Le solde net déduit le capital restant dû des comptes suivis.
+- Prêts personnels ou communs à taux fixe : taux nominal, TAEG informatif, trois modes d’assurance, frais, échéancier exportable, reprise des mensualités déjà payées et confirmation sans double débit. Le solde des comptes reste affiché sans déduction du capital restant dû, présenté séparément.
 - Données financières chiffrées par ASP.NET Core Data Protection dans SQLite. En production, clés protégées par certificat obligatoire.
 
 Aucune connexion bancaire, aucun identifiant bancaire, aucune collecte de télémétrie, aucune ressource externe dans l’interface. Chacun voit ses comptes et objectifs personnels ainsi que les éléments communs. Les opérations, graphiques et exports suivent ces droits ; les données privées du partenaire sont exclues côté serveur. Les produits peuvent être nommés librement, mais les règles réglementaires, taux d’intérêt historiques, catégories hiérarchiques et recommandations du diagramme complet ne sont pas encore implémentés.

@@ -77,7 +77,7 @@ public static class FinancialAnalytics
             history.Add(new(d, personal, joint, dailyFlows[d].Where(t => t.Kind == EntryKind.Income).Sum(t => t.Cents), -dailyFlows[d].Where(t => t.Kind == EntryKind.Expense).Sum(t => t.Cents), accounts.Count(a => a.OpeningDate <= d), accounts.Length));
         }
         var days = request.To.DayNumber - request.From.DayNumber + 1;
-        var grain = request.Grain == AnalyticsGrain.Auto ? days <= 45 ? AnalyticsGrain.Daily : days <= 180 ? AnalyticsGrain.Weekly : AnalyticsGrain.Monthly : request.Grain;
+        var grain = request.Grain == AnalyticsGrain.Auto ? days <= 31 ? AnalyticsGrain.Daily : days <= 93 ? AnalyticsGrain.Weekly : AnalyticsGrain.Monthly : request.Grain;
         DateOnly Bucket(DateOnly d) => grain switch
         {
             AnalyticsGrain.Weekly => d.AddDays(-(((int)d.DayOfWeek + 6) % 7)),

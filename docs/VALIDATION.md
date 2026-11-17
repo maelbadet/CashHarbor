@@ -5,7 +5,7 @@ Vérifications effectuées le 17 novembre 2026, avec des données exclusivement 
 | Vérification | Résultat |
 | --- | --- |
 | Construction de la solution .NET 10 | Réussite, zéro avertissement et zéro erreur |
-| Suites exécutables métier / stockage / HTTP | 31 sur 31 |
+| Suites exécutables métier / stockage / HTTP | 32 sur 32 |
 | Vecteurs officiels RFC 6238 | Six vecteurs SHA-1 vérifiés |
 | Précision des montants et dates limites | Validées |
 | Virements atomiques et suppression des deux écritures | Validés |
@@ -20,6 +20,10 @@ Vérifications effectuées le 17 novembre 2026, avec des données exclusivement 
 | Analyse financière | Soldes quotidiens comparés au journal, centimes exacts, couverture partielle, soldes négatifs, regroupements sans perte, comparaison de périodes et CSV vérifiés |
 | Interactions des graphiques | Clavier, toucher, légende, dates personnalisées et export SVG vérifiés à 390 et 1 440 px, sans erreur JavaScript ni violation CSP |
 | Export analytique HTTP | Compte privé du partenaire et dates invalides rejetés ; CSV commun identique au rapport autorisé |
+| Rappels mensuels | Activation individuelle, fin de mois, année bissextile, heure de Paris et passage à l’heure d’été, reprise des échecs après six heures, déduplication après redémarrage et concurrence vérifiées avec un transport fictif |
+| SMTP et confidentialité | Configuration chiffrée sur disque, secret jamais renvoyé, changement de serveur sans ressaisie du secret refusé, destinataire lié à l’identité ; CSRF et falsification de destinataire vérifiées via HTTP |
+| Interface SMTP | Formulaires dépliés inspectés à 390 et 1 440 px, aucun débordement global et champ mot de passe vide |
+| Transport Hostinger | Bibliothèques SMTP incluses dans l’image Linux ; aucun identifiant réel utilisé et aucun envoi réel effectué. La connexion fournisseur reste à tester après configuration sur le VPS |
 | NuGet : dépendances directes et transitives vulnérables connues | Aucune signalée par les sources consultées |
 | Configuration Docker Compose | Valide avec origine HTTPS de test |
 | Image Linux : compilation Release | Réussite |
@@ -31,7 +35,7 @@ Vérifications effectuées le 17 novembre 2026, avec des données exclusivement 
 | Marqueur SQLite v2 | Anciennes images v1 bloquées pour empêcher le contournement des nouveaux droits |
 | Prêts à taux fixe | Formule de mensualité comparée à une référence indépendante, capital conservé au centime, dernier solde nul, cas à taux zéro et jours de fin de mois |
 | Assurance et TAEG | Trois modes testés, base de capital correcte, TAEG informatif exclu du taux nominal d’amortissement |
-| Règlements et reprise de prêts | Débit facultatif atomique, annulation rétablie, double soumission et doublon de dépense refusés, mensualités déjà réglées sans création d’anciens débits ; solde net réduit uniquement des intérêts et de l’assurance lors d’un remboursement, sans double comptage du capital |
+| Règlements et reprise de prêts | Débit facultatif atomique, annulation rétablie, double soumission et doublon de dépense refusés, mensualités déjà réglées sans création d’anciens débits ; capital restant dû présenté séparément du solde des comptes |
 | Confidentialité des prêts | Contrats, règlements, détails et CSV personnels cachés au partenaire ; comptes de visibilité incompatible et identifiants forgés refusés |
 | Marqueur SQLite v3 | Sauvegarde et conservation exacte de l’enveloppe lors du passage v2 vers v3 ; anciennes images v2 bloquées |
 | Récurrences annuelles | Paiement complet une fois par an, rattrapage sans doublon, retour au 29 février après les années non bissextiles |

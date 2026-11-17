@@ -36,12 +36,16 @@ try {
   await send('Network.setCookies', { cookies: fixture.cookies });
   for (const width of [1440, 390]) {
     await send('Emulation.setDeviceMetricsOverride', { width, height: width === 390 ? 844 : 1000, deviceScaleFactor: 1, mobile: width === 390 });
-    for (const route of ['/', '/comptes', '/comptes?type=epargne', '/comptes?vue=commun', '/comptes?vue=personnel', '/operations', '/objectifs', '/echeances', '/prets', ...(fixture.loanRoutes ?? []), '/parametres', '/connexion']) {
+    for (const route of ['/', '/comptes', '/comptes?type=epargne', '/comptes?vue=commun', '/comptes?vue=personnel', '/operations', '/objectifs', '/echeances', '/prets', ...(fixture.loanRoutes ?? []), '/parametres', '/?espace=couple', '/operations?espace=couple', '/objectifs?espace=couple', '/echeances?espace=couple', '/comptes?type=epargne&espace=couple', '/prets?espace=couple', '/connexion']) {
       await send('Page.navigate', { url: fixture.origin + route });
       await delay(500);
       for (let i = 0; i < 40; i++) { const r = await send('Runtime.evaluate', { expression: 'document.readyState === "complete"', returnByValue: true }); if (r.result.value) break; await delay(100); }
       if (route === '/comptes?type=epargne') {
-        await send('Runtime.evaluate', { expression: 'document.querySelector(".account-card details").open = true' });
+        await send('Runtime.evaluate', { expression: 'if(document.querySelector(".account-card details")) document.querySelector(".account-card details").open = true' });
+      }
+      if (route === '/parametres') {
+        const reminder = await send('Runtime.evaluate', { expression: `(() => {document.querySelector('.smtp-settings').open=true;const checkbox=document.querySelector('#rappels input[type="checkbox"]');return checkbox.getBoundingClientRect().width<=24 && document.querySelector('[name="smtpPassword"]').value==='';})()`, returnByValue:true });
+        if(!reminder.result.value) throw new Error('Reminder form styling or password exposure failed');
       }
       if (route === '/') {
         const interaction = await send('Runtime.evaluate', { expression: `(() => {

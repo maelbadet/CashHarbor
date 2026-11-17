@@ -20,15 +20,25 @@ internal static class HttpAccessRegression
             Check(!b.Contains("Mon compte personnel") && !b.Contains("Mon projet personnel"), "First user data leaked to partner on " + route);
             Check(!WebUtility.HtmlDecode(b).Contains("Prêt auto personnel"), "Private loan leaked to partner on " + route);
         }
-        using (var json = JsonDocument.Parse(await second.GetStringAsync("/export/json")))
+        using (var json = JsonDocument.Parse(await second.GetStringAsync("/export/json?espace=couple")))
         {
             Check(!json.RootElement.GetProperty("Accounts").EnumerateArray().Any(a => a.GetProperty("Id").GetGuid() == firstAccount), "JSON export exposes private account ID.");
             Check(json.RootElement.GetProperty("Accounts").EnumerateArray().Any(a => a.GetProperty("Id").GetGuid() == sharedAccount), "JSON export omits joint account.");
         }
         var token = Token(await second.GetStringAsync("/comptes"));
+        var reminderPage = await second.GetStringAsync("/parametres");
+        Check(reminderPage.Contains("partner@example.test") && !reminderPage.Contains("web@example.test"), "Reminder recipient leaked or is not the current user.");
+        response = await second.PostAsync("/actions/reminder-save", Form(new() { ["enabled"] = "on", ["day"] = "1", ["hour"] = "9" }));
+        Check(response.StatusCode == HttpStatusCode.BadRequest, "Reminder update accepted without CSRF.");
+        response = await second.PostAsync("/actions/reminder-save", Form(new() { ["__RequestVerificationToken"] = token, ["day"] = "16", ["hour"] = "11", ["actor"] = firstActor.ToString(), ["email"] = "forged@example.test" }));
+        Check(response.Headers.Location?.OriginalString.Contains("succes=1") == true, "Own disabled reminder preferences could not be saved.");
+        reminderPage = await second.GetStringAsync("/parametres");
+        Check(reminderPage.Contains("partner@example.test") && !reminderPage.Contains("forged@example.test"), "Reminder recipient was trusted from form input.");
+        response = await second.PostAsync("/actions/reminder-test", Form(new() { ["__RequestVerificationToken"] = token }));
+        Check(response.Headers.Location?.OriginalString.Contains("erreur=") == true, "Unconfigured SMTP test should be rejected.");
         foreach (var route in new[] { "/export/analytics.csv?compte=" + firstAccount, "/export/analytics.csv?periode=custom&debut=invalid&fin=invalid" })
             Check((await second.GetAsync(route)).StatusCode == HttpStatusCode.BadRequest, "Analytics accepted hidden account or invalid dates.");
-        var analyticsState = JsonSerializer.Deserialize<Workspace>(await second.GetStringAsync("/export/json"))!;
+        var analyticsState = JsonSerializer.Deserialize<Workspace>(await second.GetStringAsync("/export/json?espace=couple"))!;
         var date = DateOnly.FromDateTime(DateTime.Today);
         var commonReport = CashHarbor.Application.FinancialAnalytics.Build(analyticsState, new(date, date, CashHarbor.Application.AnalyticsScope.Joint), date);
         var csv = await second.GetStringAsync($"/export/analytics.csv?periode=custom&debut={date:yyyy-MM-dd}&fin={date:yyyy-MM-dd}&vue=commun");
@@ -42,7 +52,7 @@ internal static class HttpAccessRegression
         Check(response.Headers.Location?.OriginalString.Contains("erreur=") == true, "HTTP write to private account accepted.");
         response = await second.PostAsync("/actions/account-add", Form(new() { ["__RequestVerificationToken"] = token, ["name"] = "B_PRIVATE_CREATED_HTTP", ["institution"] = "Bank", ["kind"] = "Savings", ["visibility"] = "Personal", ["opening"] = "99", ["date"] = DateTime.Today.ToString("yyyy-MM-dd"), ["ownerId"] = firstActor.ToString() }));
         Check(response.Headers.Location?.OriginalString.Contains("succes=1") == true, "Second user could not create own account.");
-        using (var json = JsonDocument.Parse(await second.GetStringAsync("/export/json")))
+        using (var json = JsonDocument.Parse(await second.GetStringAsync("/export/json?espace=personnel")))
         {
             var account = json.RootElement.GetProperty("Accounts").EnumerateArray().Single(a => a.GetProperty("Name").GetString() == "B_PRIVATE_CREATED_HTTP");
             Check(account.GetProperty("OwnerId").GetGuid() == secondActor, "Form supplied owner ID was trusted.");
@@ -52,18 +62,36 @@ internal static class HttpAccessRegression
         Check(!(await first.GetStringAsync("/export/json")).Contains("B_PRIVATE"), "New partner account leaked after joint update.");
         await CheckLoansAsync(first, second, token, firstActor, secondActor);
         await CheckAnnualRecurrencesAsync(first, second, token, firstActor, sharedAccount);
+        foreach (var client in new[] { first, second })
+        {
+            foreach (var key in new[] { "personnel", "couple" })
+            {
+                var json = JsonSerializer.Deserialize<Workspace>(await client.GetStringAsync("/export/json?espace=" + key))!;
+                var expected = key == "couple" ? AccountVisibility.Joint : AccountVisibility.Personal;
+                Check(json.Accounts.All(a => a.Visibility == expected) && json.Goals.All(g => g.Visibility == expected) && json.Loans.All(l => l.Visibility == expected), "Mixed export in " + key);
+                var page = WebUtility.HtmlDecode(await client.GetStringAsync("/?espace=" + key));
+                Check(!page.Contains(key == "couple" ? "Mon compte personnel" : "Notre épargne commune"), "Dashboard mixes spaces.");
+                var navigation = await client.GetStringAsync("/comptes");
+                Check(!WebUtility.HtmlDecode(navigation).Contains(key == "couple" ? "Mon compte personnel" : "Notre épargne commune"), "Space not retained across navigation.");
+            }
+        }
+        response = await first.PostAsync("/actions/account-edit", Form(new() { ["__RequestVerificationToken"] = Token(await first.GetStringAsync("/comptes?espace=personnel")), ["espace"] = "personnel", ["id"] = sharedAccount.ToString(), ["name"] = "WRONG_SPACE", ["institution"] = "Bank" }));
+        Check(response.Headers.Location?.OriginalString.Contains("erreur=") == true, "Form edited an account in another space.");
+        Check((await first.GetAsync("/?espace=unknown")).StatusCode == HttpStatusCode.BadRequest, "Invalid space accepted.");
+        await first.GetAsync("/?espace=personnel");
         Console.WriteLine("HTTP PASS two identities: pages, filters, charts, exports, forged IDs, owner assignment and common access");
     }
     private static async Task CheckLoansAsync(HttpClient first, HttpClient second, string token, Guid firstActor, Guid secondActor)
     {
-        var a = JsonSerializer.Deserialize<Workspace>(await first.GetStringAsync("/export/json"))!;
-        var own = a.Loans.Single(l => l.OwnerId == firstActor); var joint = a.Loans.Single(l => l.Visibility == AccountVisibility.Joint);
+        var a = JsonSerializer.Deserialize<Workspace>(await first.GetStringAsync("/export/json?espace=personnel"))!;
+        var common = JsonSerializer.Deserialize<Workspace>(await first.GetStringAsync("/export/json?espace=couple"))!;
+        var own = a.Loans.Single(l => l.OwnerId == firstActor); var joint = common.Loans.Single(l => l.Visibility == AccountVisibility.Joint);
         foreach (var route in new[] { "/prets/" + own.Id, "/export/loan/" + own.Id + "/csv" })
         {
-            var response = await second.GetAsync(route); Check(response.StatusCode == HttpStatusCode.NotFound, "Private loan details or export accessible by guessed ID.");
-            Check((await first.GetAsync(route)).IsSuccessStatusCode, "Owner cannot access loan details or export.");
+            var response = await second.GetAsync(route + "?espace=personnel"); Check(response.StatusCode == HttpStatusCode.NotFound, "Private loan details or export accessible by guessed ID.");
+            Check((await first.GetAsync(route + "?espace=personnel")).IsSuccessStatusCode, "Owner cannot access loan details or export.");
         }
-        Check((await second.GetAsync("/prets/" + joint.Id)).IsSuccessStatusCode && (await second.GetAsync("/export/loan/" + joint.Id + "/csv")).IsSuccessStatusCode, "Common loan not accessible to partner.");
+        Check((await second.GetAsync("/prets/" + joint.Id + "?espace=couple")).IsSuccessStatusCode && (await second.GetAsync("/export/loan/" + joint.Id + "/csv?espace=couple")).IsSuccessStatusCode, "Common loan not accessible to partner.");
         var noCsrf = await first.PostAsync("/actions/loan-confirm", Form(new() { ["id"] = own.Id.ToString(), ["number"] = "12", ["paidOn"] = DateTime.Today.ToString("yyyy-MM-dd") }));
         Check(noCsrf.StatusCode == HttpStatusCode.BadRequest, "Loan mutation accepted without CSRF.");
         foreach (var action in new[] { "loan-confirm", "loan-account", "loan-delete", "loan-undo" })
@@ -74,10 +102,10 @@ internal static class HttpAccessRegression
         var draft = new Dictionary<string, string> { ["__RequestVerificationToken"] = token, ["id"] = own.Id.ToString(), ["name"] = "B_PRIVATE_LOAN_HTTP", ["lender"] = "B_PRIVATE_LENDER_HTTP", ["loanKind"] = "Consumer", ["principal"] = "1200", ["rate"] = "3.5", ["months"] = "12", ["firstDue"] = DateTime.Today.AddMonths(-1).ToString("yyyy-MM-dd"), ["insuranceKind"] = "FixedMonthly", ["insurance"] = "1", ["insuranceRate"] = "0", ["fees"] = "0", ["apr"] = "4.0", ["initialPaid"] = "0", ["visibility"] = "Personal", ["ownerId"] = firstActor.ToString() };
         var result = await second.PostAsync("/actions/loan-save", Form(draft)); Check(result.Headers.Location?.OriginalString.Contains("erreur=") == true, "Private loan contract overwritten by partner.");
         draft.Remove("id"); result = await second.PostAsync("/actions/loan-save", Form(draft)); Check(result.Headers.Location?.OriginalString.Contains("succes=1") == true, "HTTP loan creation failed.");
-        var b = JsonSerializer.Deserialize<Workspace>(await second.GetStringAsync("/export/json"))!;
+        var b = JsonSerializer.Deserialize<Workspace>(await second.GetStringAsync("/export/json?espace=personnel"))!;
         Check(b.Loans.Single(l => l.Name == "B_PRIVATE_LOAN_HTTP").OwnerId == secondActor, "Loan owner supplied in form was trusted.");
         Check(!(await first.GetStringAsync("/export/json")).Contains("B_PRIVATE"), "New private partner loan leaked.");
-        var number = LoanCalculator.PaidCount(joint, b.LoanPayments) + 1;
+        var number = LoanCalculator.PaidCount(joint, common.LoanPayments) + 1;
         var payment = new Dictionary<string, string> { ["__RequestVerificationToken"] = token, ["id"] = joint.Id.ToString(), ["number"] = number.ToString(), ["paidOn"] = DateTime.Today.ToString("yyyy-MM-dd"), ["mode"] = "tracking" };
         result = await second.PostAsync("/actions/loan-confirm", Form(payment)); Check(result.Headers.Location?.OriginalString.Contains("succes=1") == true, "Partner could not confirm common loan payment.");
         result = await second.PostAsync("/actions/loan-confirm", Form(payment)); Check(result.Headers.Location?.OriginalString.Contains("erreur=") == true, "Double POST confirmed installment twice.");
@@ -86,7 +114,7 @@ internal static class HttpAccessRegression
     }
     private static async Task CheckAnnualRecurrencesAsync(HttpClient first, HttpClient second, string secondToken, Guid actor, Guid sharedAccount)
     {
-        var w = JsonSerializer.Deserialize<Workspace>(await first.GetStringAsync("/export/json"))!;
+        var w = JsonSerializer.Deserialize<Workspace>(await first.GetStringAsync("/export/json?espace=personnel"))!;
         var account = w.Accounts.First(a => a.OwnerId == actor).Id;
         var token = Token(await first.GetStringAsync("/echeances"));
         var draft = new Dictionary<string, string> { ["__RequestVerificationToken"] = token, ["account"] = account.ToString(), ["label"] = "PRIVATE_ANNUAL_WATER", ["category"] = "Logement", ["amount"] = "-600", ["next"] = DateTime.Today.AddYears(1).ToString("yyyy-MM-dd"), ["essential"] = "on", ["frequency"] = "Yearly" };
@@ -103,7 +131,7 @@ internal static class HttpAccessRegression
         response = await first.PostAsync("/actions/recurrence-add", Form(draft)); Check(response.Headers.Location?.OriginalString.Contains("erreur=") == true, "Invalid recurrence frequency accepted over HTTP.");
         draft["frequency"] = "Yearly"; draft["label"] = "Assurance annuelle commune"; draft["account"] = sharedAccount.ToString(); draft["__RequestVerificationToken"] = secondToken;
         response = await second.PostAsync("/actions/recurrence-add", Form(draft)); Check(response.Headers.Location?.OriginalString.Contains("succes=1") == true, "Shared annual bill creation failed.");
-        Check(WebUtility.HtmlDecode(await first.GetStringAsync("/echeances")).Contains("Assurance annuelle commune"), "Shared annual bill absent from partner's view.");
+        Check(WebUtility.HtmlDecode(await first.GetStringAsync("/echeances?espace=couple")).Contains("Assurance annuelle commune"), "Shared annual bill absent from partner's view.");
         Console.WriteLine("HTTP PASS annual recurrences: create/edit, full amount, shared access, private isolation and invalid frequencies");
     }
     private static FormUrlEncodedContent Form(Dictionary<string, string> values) => new(values);

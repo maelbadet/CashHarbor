@@ -9,6 +9,7 @@
   <ItemGroup>
     <ProjectReference Include="../CashHarbor.Application/CashHarbor.Application.csproj" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.12" />
+    <PackageReference Include="MailKit" Version="5.0.0" />
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
 </Project>

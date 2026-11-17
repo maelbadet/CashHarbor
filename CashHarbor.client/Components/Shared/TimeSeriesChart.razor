@@ -2,7 +2,7 @@
     var axis = ChartAxis.Create(Series.SelectMany(s => s.Values), IncludeZero);
     var last = Dates.Count - 1;
     var shown = Series.Take(3).ToArray();
-    var labels = Enumerable.Range(0, Math.Min(Dates.Count, 6)).Select(i => Dates.Count <= 1 ? 0 : (int)decimal.Round(i * (Dates.Count - 1m) / (Math.Min(Dates.Count, 6) - 1), 0)).Distinct().ToArray();
+    var labels = ChartGeometry.DateLabels(Dates);
 }
 @if (Dates.Count > 0 && shown.Length > 0)
 {
@@ -38,7 +38,7 @@
     [Parameter, EditorRequired] public IReadOnlyList<ChartSeries> Series { get; set; } = [];
     [Parameter] public string Title { get; set; } = "Évolution des soldes";
     [Parameter] public bool IncludeZero { get; set; }
-    [Parameter] public bool Stepped { get; set; } = true;
-    [Parameter] public string AxisNote { get; set; } = "Échelle ajustée automatiquement, sans lissage des données.";
+    [Parameter] public bool Stepped { get; set; }
+    [Parameter] public string AxisNote { get; set; } = "Soldes quotidiens reliés par des segments droits ; aucun lissage ni prévision.";
     private static readonly CultureInfo Fr = CultureInfo.GetCultureInfo("fr-FR");
 }

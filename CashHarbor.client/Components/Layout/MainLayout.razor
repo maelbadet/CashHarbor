@@ -1,22 +1,24 @@
-﻿@inherits LayoutComponentBase
+@inherits LayoutComponentBase
+@inject SpaceContext Space
 <a class="skip" href="#content">Aller au contenu</a>
 <div class="shell">
     <AuthorizeView><Authorized>
         <aside class="sidebar">
             <a class="brand" href="/"><img src="/harbor.svg" alt="" width="38" height="38" /><span>CashHarbor<small>CODE AND WEB CONSULTING</small></span></a>
-            <span class="nav-label">NOTRE ESPACE</span>
+            <div class="space-switch" aria-label="Choisir un espace"><a href="/?espace=personnel" class="@(!Space.IsCouple ? "selected" : "")" aria-current="@(!Space.IsCouple ? "page" : null)"><span>◈</span> Personnel<small>Mes comptes privés</small></a><a href="/?espace=couple" class="@(Space.IsCouple ? "selected" : "")" aria-current="@(Space.IsCouple ? "page" : null)"><span>◉</span> Couple<small>Nos finances communes</small></a></div>
+            <span class="nav-label">ESPACE @Space.Label.ToUpperInvariant()</span>
             <nav aria-label="Navigation principale">
-                <NavLink href="/" Match="NavLinkMatch.All"><span>◫</span> Vue d’ensemble</NavLink>
-                <NavLink href="/comptes"><span>▤</span> Comptes</NavLink>
-                <a href="/comptes?type=epargne"><span>◇</span> Épargne</a>
-                <NavLink href="/operations"><span>⇄</span> Opérations</NavLink>
-                <NavLink href="/objectifs"><span>◎</span> Objectifs</NavLink>
-                <NavLink href="/echeances"><span>↻</span> Échéances</NavLink>
-                <NavLink href="/prets"><span>◷</span> Prêts et crédits</NavLink>
-                <NavLink href="/parametres"><span>⚙</span> Paramètres</NavLink>
+                <NavLink href="@Space.Url("/")" Match="NavLinkMatch.All"><span>◫</span> Vue d’ensemble</NavLink>
+                <NavLink href="@Space.Url("/comptes")"><span>▤</span> Comptes</NavLink>
+                <a href="@Space.Url("/comptes?type=epargne")"><span>◇</span> Épargne</a>
+                <NavLink href="@Space.Url("/operations")"><span>⇄</span> Opérations</NavLink>
+                <NavLink href="@Space.Url("/objectifs")"><span>◎</span> Objectifs</NavLink>
+                <NavLink href="@Space.Url("/echeances")"><span>↻</span> Échéances</NavLink>
+                <NavLink href="@Space.Url("/prets")"><span>◷</span> Prêts et crédits</NavLink>
+                <NavLink href="@Space.Url("/parametres")"><span>⚙</span> Paramètres</NavLink>
             </nav>
             <div class="sidebar-bottom"><span class="private-dot">Espace privé · 2 personnes</span><p>Un cap commun.<br />Des finances plus claires.</p><form method="post" action="/auth/logout"><AntiforgeryToken /><button class="logout" type="submit">Se déconnecter ↗</button></form></div>
         </aside>
     </Authorized></AuthorizeView>
-    <main id="content" class="main"><AuthorizeView><Authorized><div class="workspace-topbar"><span>CASHHARBOR <span class="topbar-separator">/</span> ESPACE FINANCIER</span><div><span class="private-dot">Accès privé</span><a href="/parametres">Paramètres ↗</a></div></div></Authorized></AuthorizeView>@Body<footer>CashHarbor <span>Conçu pour votre quotidien, par CWC.</span></footer></main>
+    <main id="content" class="main"><AuthorizeView><Authorized><div class="workspace-topbar"><span>CASHHARBOR <span class="topbar-separator">/</span> ESPACE @Space.Label.ToUpperInvariant()</span><div><span class="private-dot">Accès privé</span><a href="/parametres">Paramètres ↗</a></div></div><div class="space-banner"><strong>Espace @Space.Label.ToLowerInvariant()</strong><span>@(Space.IsCouple ? "Vos comptes, dépenses et projets communs." : "Vos comptes et frais personnels, sans impact sur le budget du couple.")</span></div></Authorized></AuthorizeView>@Body<footer>CashHarbor <span>Conçu pour votre quotidien, par CWC.</span></footer></main>
 </div>

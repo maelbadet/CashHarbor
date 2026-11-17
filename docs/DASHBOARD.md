@@ -2,7 +2,7 @@
 
 Le tableau de bord propose des périodes de 1, 3, 6 ou 12 mois, l’année en cours et des dates personnalisées inclusives. La vue peut regrouper les comptes personnels et communs, ou sélectionner une seule visibilité et un seul compte. Chaque utilisateur reçoit uniquement ses comptes personnels et les comptes communs.
 
-Les soldes sont calculés en centimes, à la fin de chaque journée, depuis les soldes initiaux et les opérations enregistrées. La courbe suit des paliers sans lissage. Une date antérieure au début du suivi d’un compte ne constitue pas un solde connu : la couverture partielle est signalée. Les valorisations manuelles influencent les soldes ; cette courbe ne mesure pas un rendement de placement.
+Les soldes sont calculés en centimes, à la fin de chaque journée, depuis les soldes initiaux et les opérations enregistrées. La courbe relie les soldes quotidiens par des segments droits, sans lissage ni projection. Les dates de repère suivent les mois et les séries utilisent des traits pleins. Le regroupement automatique des flux devient mensuel au-delà de trois mois pour éviter des barres trop fines. Une date antérieure au début du suivi d’un compte ne constitue pas un solde connu : la couverture partielle est signalée. Les valorisations manuelles influencent les soldes ; cette courbe ne mesure pas un rendement de placement.
 
 Les revenus et dépenses excluent les virements internes et les ajustements. Une facture annuelle apparaît intégralement le jour de sa comptabilisation. Le regroupement quotidien, hebdomadaire ou mensuel conserve les mêmes totaux, y compris pour les semaines et mois partiels. La comparaison utilise la période précédente de même nombre de jours ; aucun pourcentage n’est inventé si la base est nulle.
 
