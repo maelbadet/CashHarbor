@@ -2,7 +2,7 @@
 @attribute [Authorize]
 @inherits FinancePage
 <PageTitle>Comptes et épargne · CashHarbor</PageTitle>
-<header class="page-header"><div><span class="eyebrow">PERSONNEL OU COMMUN, UN SUIVI COMPLET</span><h1>@(SavingsOnly ? "Votre épargne disponible" : InvestmentsOnly ? "Vos comptes de placement" : "Vos comptes, à leur place")<span class="accent">.</span></h1><p>Vos comptes personnels restent privés. Les comptes communs sont accessibles à vous deux.</p></div><a class="button" href="#ajouter">Ajouter un compte ↗</a></header>
+<header class="page-header"><div><span class="eyebrow">PERSONNEL OU COMMUN, UN SUIVI COMPLET</span><h1>@(SavingsOnly ? "Votre épargne disponible" : InvestmentsOnly ? "Vos comptes de placement" : "Vos comptes, à leur place")<span class="accent">.</span></h1><p>Vos comptes personnels restent privés. Les comptes communs sont accessibles à vous deux.</p></div><a class="button" href="@FormAnchor">Ajouter un compte ↗</a></header>
 <Notice />
 @if (W != null)
 {
@@ -47,7 +47,7 @@
         </div>
     }
     @if (accounts.Length == 0) { <section class="panel empty"><span class="empty-symbol">▤</span><h2>Aucun compte dans cette vue.</h2><p>Ajoutez un compte personnel ou commun, puis suivez son solde et son évolution.</p></section> }
-    <section class="panel form-panel" id="ajouter"><span class="eyebrow">UN NOUVEAU REPÈRE</span><h2>Ajouter un compte ou une épargne</h2><p class="muted">Le choix personnel est privé par défaut. Choisir commun partage le compte avec votre partenaire.</p>
+    <section class="panel form-panel" id="ajouter"><span class="eyebrow">UN NOUVEAU REPÈRE</span><h2>@(SavingsOnly ? "Ajouter un compte d’épargne" : InvestmentsOnly ? "Ajouter un compte de placement" : "Ajouter un compte")</h2><p class="muted">Ce compte sera créé dans l’espace @Space.Label.ToLowerInvariant(). @(Space.IsCouple ? "Il sera accessible à vous deux." : "Il restera visible uniquement par vous.")</p>
         <form class="form-grid" method="post" action="/actions/account-add"><AntiforgeryToken /><SpaceField />
             <label>Nom du compte<input name="name" placeholder="Mon Livret A, notre compte joint…" maxlength="100" required /></label>
             <input type="hidden" name="visibility" value="@Space.Visibility" /><div><small>Destination</small><p>Espace @Space.Label.ToLowerInvariant()</p></div>

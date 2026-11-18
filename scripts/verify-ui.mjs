@@ -47,6 +47,19 @@ try {
         const reminder = await send('Runtime.evaluate', { expression: `(() => {document.querySelector('.smtp-settings').open=true;const checkbox=document.querySelector('#rappels input[type="checkbox"]');return checkbox.getBoundingClientRect().width<=24 && document.querySelector('[name="smtpPassword"]').value==='';})()`, returnByValue:true });
         if(!reminder.result.value) throw new Error('Reminder form styling or password exposure failed');
       }
+      if (['/comptes','/prets','/operations','/objectifs','/echeances','/budget'].includes(new URL(fixture.origin+route).pathname)) {
+        const modal = await send('Runtime.evaluate', { expression: `(()=>{const trigger=document.querySelector('.modal-launch button');if(!trigger)return {skip:true};trigger.click();const dialog=document.querySelector('dialog[open]');const form=dialog?.querySelector('form[method="post"]');const rect=dialog?.getBoundingClientRect();return {ok:!!dialog&&!!form?.querySelector('[name="__RequestVerificationToken"]')&&!!form?.querySelector('[name="espace"]')&&rect.width<=innerWidth&&dialog.contains(document.activeElement),title:dialog?.querySelector('h2')?.textContent};})()`, returnByValue:true });
+        if(modal.exceptionDetails || (!modal.result.value?.skip&&!modal.result.value?.ok))throw new Error('Creation modal failed '+route+': '+JSON.stringify(modal));
+        if(!modal.result.value.skip){
+          if(route==='/comptes'){const shot=await send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});await writeFile(path.join(screenshots,`${width}-account-modal.png`),Buffer.from(shot.data,'base64'));}
+          await send('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});await send('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
+          const closed=await send('Runtime.evaluate',{expression:'!document.querySelector("dialog[open]")',returnByValue:true});if(!closed.result.value)throw new Error('Escape did not close modal');
+        }
+        if(route==='/comptes'){
+          const headerOpen=await send('Runtime.evaluate',{expression:`(()=>{const link=document.querySelector('.page-header a[href*="#ajouter"]');link.click();const open=!!document.querySelector('dialog[open] form[action="/actions/account-add"]');document.querySelector('dialog[open] .modal-close')?.click();return open;})()`,returnByValue:true});if(!headerOpen.result.value)throw new Error('Account creation header button navigates instead of opening dialog');
+          const details=await send('Runtime.evaluate',{expression:`(()=>{const button=document.querySelector('.account-quick-actions button');if(!button)return true;button.click();const open=!!document.querySelector('dialog[open] .chart-data');document.querySelector('dialog[open] .modal-close')?.click();return open;})()`,returnByValue:true});if(!details.result.value)throw new Error('Account history dialog missing');
+        }
+      }
       if (route === '/projection') {
         const live = await send('Runtime.evaluate', { expression: `(()=>{const input=document.querySelector('[data-project="years"]');input.value='41';input.dispatchEvent(new Event('input',{bubbles:true}));const text=document.querySelector('[data-projection-contributed]').textContent;return {ok:text.includes('74') && document.querySelector('[data-projection-warning]').textContent.includes('actualisé'),text,warning:document.querySelector('[data-projection-warning]').textContent,invalid:[...document.querySelector('[data-projection]').elements].filter(x=>x.validity&&!x.validity.valid).map(x=>({name:x.name,value:x.value,message:x.validationMessage}))};})()`, returnByValue:true });
         if(!live.result.value.ok) throw new Error('Live projection for 41 years failed: '+JSON.stringify(live.result.value));
