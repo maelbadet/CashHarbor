@@ -36,6 +36,9 @@ internal static class SpaceRegression
         Check(GoalPlanning.Months(new(2026,11,18),new(2027,11,18))==12 && GoalPlanning.Monthly(105000,600000,12)==41250,"1050 to 6000 goal calculation incorrect.");
         Check(GoalPlanning.Monthly(700000,600000,12)==0,"Reached goal still requires contributions.");
         await finance.SavePolicyAsync(actor,"Home",8,100,1000);
+        await finance.RenameAccountAsync(actor,personalId,"LEP account","Bank","LEP");
+        await finance.RenameAccountAsync(actor,personalId,"Renamed account","Bank");
+        Check((await finance.ReadAsync(actor)).Accounts.Single(a=>a.Id==personalId).Product=="LEP","Legacy account rename dropped savings product.");
         Check(SafetyReserve.Calculate(await finance.ReadAsync(actor),false).TargetCents==480000&&SafetyReserve.Calculate(await finance.ReadAsync(partner),true).TargetCents==960000,"Saved safety policy not shared or incorrectly scaled.");
     }
     private sealed class MemoryStore(Workspace full) : IWorkspaceStore

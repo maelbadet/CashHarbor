@@ -146,7 +146,7 @@ public static class Endpoints
                 case "account-add": await finance.AddAccountAsync(actor, S("name"), S("institution"), Enum.Parse<AccountKind>(S("kind")), M("opening"), D("date"), Enum.Parse<AccountVisibility>(S("visibility")), S("product")); break;
                 case "account-share": await finance.ShareAccountAsync(actor, G("id"), S("confirm") == "on"); spaceKey = "couple"; break;
                 case "account-balance": await finance.RecordBalanceAsync(actor, G("id"), M("balance"), D("date")); break;
-                case "account-edit": await finance.RenameAccountAsync(actor, G("id"), S("name"), S("institution")); break;
+                case "account-edit": await finance.RenameAccountAsync(actor, G("id"), S("name"), S("institution"), f.ContainsKey("product") ? S("product") : null); break;
                 case "account-delete": await finance.DeleteAccountAsync(actor, G("id")); break;
                 case "transaction-add": await finance.AddTransactionAsync(actor, G("account"), S("label"), S("category"), M("amount"), D("date"), Enum.Parse<EntryKind>(S("kind")), O("target")); break;
                 case "transaction-delete": await finance.DeleteTransactionAsync(actor, G("id")); break;

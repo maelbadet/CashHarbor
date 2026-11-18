@@ -77,6 +77,15 @@ await Test("Only two provisioned users; reset revokes sessions", async () =>
     Check(!await identity.IsValidAsync(actor, old!.Version), "Reset did not revoke sessions.");
 });
 var today = finance.Today;
+await Test("Savings ceilings: regulated products, remaining deposits and interest above ceiling", () =>
+{
+    var account=new FinancialAccount(Guid.NewGuid(),"My savings","Bank",AccountKind.Savings,105000,today,AccountVisibility.Personal,actor,"LEP");
+    var lep=SavingsLimits.For(account)!;Check(lep.CeilingCents==1000000&&lep.RemainingCents(105000)==895000,"LEP ceiling or remaining deposits incorrect.");
+    var a=SavingsLimits.For(account with {Product="Livret A"})!;Check(a.CeilingCents==2295000&&a.RemainingCents(2300000)==0,"Interest above Livret A ceiling not handled.");
+    Check(SavingsLimits.For(account with {Product="livret jeune"})!.CeilingCents==160000,"Youth savings ceiling incorrect.");
+    Check(SavingsLimits.For(account with {Product="Unknown"})==null&&SavingsLimits.For(account with {Kind=AccountKind.Investment})==null,"Unknown product or investment assigned a regulated ceiling.");
+    Check(account.OpeningCents==105000,"Ceiling calculation changed ledger balance.");return Task.CompletedTask;
+});
 await Test("Safety reserve: shared costs split equally, monthly margin and savings-only balances", () =>
 {
     var own=Guid.NewGuid();var common=Guid.NewGuid();var w=new Workspace { EmergencyPolicy=new(3,50000,10000,100000,8),Accounts=[new(own,"LEP","Bank",AccountKind.Savings,105000,today,AccountVisibility.Personal,actor),new(common,"Common saving","Bank",AccountKind.Savings,200000,today,AccountVisibility.Joint),new(Guid.NewGuid(),"Current","Bank",AccountKind.Current,900000,today,AccountVisibility.Personal,actor),new(Guid.NewGuid(),"Investment","Bank",AccountKind.Investment,900000,today,AccountVisibility.Personal,actor)]};

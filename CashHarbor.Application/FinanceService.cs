@@ -47,9 +47,9 @@ public sealed class FinanceService(IWorkspaceStore store, TimeProvider clock)
         w.Snapshots.Add(new(id, value, date, prior?.AdjustmentId));
         Reconcile(w, id);
     });
-    public Task RenameAccountAsync(Guid actor, Guid id, string name, string institution) => store.UpdateAsync(actor, "account.updated", w =>
+    public Task RenameAccountAsync(Guid actor, Guid id, string name, string institution, string? product = null) => store.UpdateAsync(actor, "account.updated", w =>
     {
-        var a = Account(w, id); w.Accounts[w.Accounts.IndexOf(a)] = a with { Name = Text(name), Institution = Text(institution) };
+        var a = Account(w, id); w.Accounts[w.Accounts.IndexOf(a)] = a with { Name = Text(name), Institution = Text(institution), Product = product == null ? a.Product : string.IsNullOrWhiteSpace(product) ? "" : Text(product,60) };
     });
     public Task DeleteAccountAsync(Guid actor, Guid id) => store.UpdateAsync(actor, "account.deleted", w =>
     {
