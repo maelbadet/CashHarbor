@@ -19,6 +19,13 @@ internal static class MarketHistoryRegression
         Check(await history.ReadAsync("action", "TEST", from, to) == null, "ETF accepted as an action.");
         Check(await history.ReadAsync("crypto", "../../secret", from, to) == null, "Invalid symbol accepted.");
         handler.Fail = true; Check(await history.ReadAsync("crypto", "bitcoin", from, to) == null, "Missing provider data fabricated.");
+        handler.Fail = false;
+        var search = new InstrumentSearch(http, config, cache);
+        var matches = await search.SearchAsync("etf", "test");
+        Check(matches.Count == 1 && matches[0].Name == "Test Fund" && matches[0].Currency == "USD", "Friendly ETF name or currency missing.");
+        Check((await search.SearchAsync("action", "test")).Count == 0, "ETF appeared in action search.");
+        calls = handler.Calls; await search.SearchAsync("etf", "test"); Check(handler.Calls == calls, "Instrument search not cached.");
+        var coins = await search.SearchAsync("crypto", "Ethereum"); Check(coins.Single().Id == "ethereum" && coins.Single().Name == "Ethereum", "Crypto name search failed.");
     }
     private sealed class Handler : HttpMessageHandler
     {
@@ -27,6 +34,8 @@ internal static class MarketHistoryRegression
         {
             Calls++; var uri = request.RequestUri!.ToString();
             var json = uri.Contains("SYMBOL_SEARCH") ? "{\"bestMatches\":[{\"1. symbol\":\"TEST\",\"3. type\":\"ETF\",\"8. currency\":\"USD\"}]}" : uri.Contains("coingecko") ? "{\"prices\":[[1767225600000,3000],[1767312000000,3200]]}" : "{\"Monthly Time Series\":{\"2026-01-30\":{\"4. close\":\"100\"},\"2026-02-27\":{\"4. close\":\"120\"}}}";
+            if (uri.Contains("SYMBOL_SEARCH")) json = "{\"bestMatches\":[{\"1. symbol\":\"TEST\",\"2. name\":\"Test Fund\",\"3. type\":\"ETF\",\"4. region\":\"United States\",\"8. currency\":\"USD\"}]}";
+            if (uri.Contains("/search?")) json = "{\"coins\":[{\"id\":\"ethereum\",\"name\":\"Ethereum\",\"symbol\":\"ETH\"}]}";
             return Task.FromResult(new HttpResponseMessage(Fail ? HttpStatusCode.TooManyRequests : HttpStatusCode.OK) { Content = new StringContent(json) });
         }
     }
