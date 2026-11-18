@@ -46,6 +46,11 @@ builder.Services.AddSingleton<IReminderMailer, SmtpReminderMailer>();
 builder.Services.AddHostedService<ReminderWorker>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<SpaceContext>();
+builder.Services.AddMemoryCache();
+builder.Services.AddSingleton<PortfolioGate>();
+builder.Services.AddScoped<IPortfolio, Portfolio>();
+builder.Services.AddHttpClient<IMarketPrices, MarketPrices>(c => { c.Timeout = TimeSpan.FromSeconds(8); c.DefaultRequestHeaders.UserAgent.ParseAdd("CashHarbor/1.0"); });
+builder.Logging.AddFilter("System.Net.Http.HttpClient", LogLevel.None);
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme).AddCookie(options =>
 {
     options.Cookie.Name = "__Host-CashHarbor"; options.Cookie.HttpOnly = true; options.Cookie.SecurePolicy = CookieSecurePolicy.Always; options.Cookie.SameSite = SameSiteMode.Strict;

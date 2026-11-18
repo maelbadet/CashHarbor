@@ -16,6 +16,8 @@ services:
       Logging__LogLevel__Default: Warning
       Logging__LogLevel__Microsoft.AspNetCore: Warning
       TZ: Europe/Paris
+      Markets__AlphaVantageKey: ${ALPHAVANTAGE_API_KEY:-}
+      Markets__CoinGeckoKey: ${COINGECKO_API_KEY:-}
     volumes:
       - data:/data
       - keys:/keys

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Microsoft.Extensions.Configuration;
 using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
@@ -76,6 +77,24 @@ await Test("Only two provisioned users; reset revokes sessions", async () =>
     Check(!await identity.IsValidAsync(actor, old!.Version), "Reset did not revoke sessions.");
 });
 var today = finance.Today;
+await Test("Portfolio privacy, encrypted storage and constant-capital simulation", async () =>
+{
+    var directory = Path.Combine(runDirectory, "portfolio-tests"); Directory.CreateDirectory(directory);
+    var configuration = new Microsoft.Extensions.Configuration.ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Storage:Directory"] = directory }).Build();
+    var portfolio = new Portfolio(scope.ServiceProvider.GetRequiredService<IWorkspaceStore>(), provider.GetRequiredService<IDataProtectionProvider>(), configuration, new PortfolioGate());
+    Guid partner; await using (var db = await factory.CreateDbContextAsync()) partner = (await db.Users.SingleAsync(u => u.Id != actor)).Id;
+    await portfolio.SaveAsync(actor, false, new(Guid.Empty, "SECRET_ETH", "crypto", "ethereum", .5m, 750, today.AddYears(-2)));
+    await portfolio.SaveAsync(actor, true, new(Guid.Empty, "COMMON_ETF", "etf", "TEST", 2m, 750, today.AddMonths(-10), 450));
+    Check((await portfolio.ReadAsync(actor, false)).Count == 1 && (await portfolio.ReadAsync(partner, false)).Count == 0, "Personal portfolio leaked.");
+    Check((await portfolio.ReadAsync(partner, true)).Single().Name == "COMMON_ETF", "Common portfolio missing.");
+    var id = (await portfolio.ReadAsync(actor, false)).Single().Id;
+    await Reject(() => portfolio.DeleteAsync(partner, false, id));
+    foreach (var file in Directory.GetFiles(directory)) Check(!(await File.ReadAllTextAsync(file)).Contains("SECRET_ETH"), "Portfolio stored unencrypted.");
+    Check(InvestmentMath.Value(.5m, 3000m) == 1500m, "Fractional quantity lost precision.");
+    Check(InvestmentMath.Scenario(750, 0, today.AddYears(-2), today) == 750, "Zero rate changed capital.");
+    Check(InvestmentMath.Scenario(750, 2, today, today) == 750, "Same-day simulation accrued interest.");
+    Check(InvestmentMath.Scenario(750, 2, new(2025, 1, 1), new(2026, 1, 1)) is > 764m and < 766m, "Annual scenario incorrect.");
+});
 await Test("Exact analytics, scopes, partial periods, grouping and CSV", AnalyticsRegression.Run);
 await Test("Separate personal/couple spaces, expenses, exports and recurrence booking", SpaceRegression.Run);
 await Test("Monthly reminders: consent, encryption, Paris time, retry and persistent deduplication", () => ReminderRegression.Run(factory, provider.GetRequiredService<IDataProtectionProvider>(), runDirectory));

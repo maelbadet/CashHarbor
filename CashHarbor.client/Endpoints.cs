@@ -13,6 +13,21 @@ public static class Endpoints
 {
     public static void MapCashHarborEndpoints(this WebApplication app)
     {
+        app.MapPost("/portfolio/{action}", async (string action, HttpContext http, IAntiforgery csrf, IPortfolio portfolio) =>
+        {
+            try { await csrf.ValidateRequestAsync(http); } catch (AntiforgeryValidationException) { return Results.BadRequest(); }
+            var f = await http.Request.ReadFormAsync(); var actor = Guid.Parse(http.User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+            if (f["espace"].ToString() is not ("personnel" or "couple")) return Results.BadRequest();
+            var couple = f["espace"] == "couple"; var back = "/placements?espace=" + (couple ? "couple" : "personnel");
+            try
+            {
+                decimal D(string key) => decimal.Parse(f[key].ToString(), CultureInfo.InvariantCulture);
+                if (action == "add") await portfolio.SaveAsync(actor, couple, new(Guid.Empty, f["name"].ToString().Trim(), f["kind"].ToString(), f["symbol"].ToString().Trim(), D("quantity"), D("invested"), DateOnly.ParseExact(f["bought"].ToString(), "yyyy-MM-dd"), string.IsNullOrEmpty(f["manual"]) ? null : D("manual")));
+                else if (action == "delete") await portfolio.DeleteAsync(actor, couple, Guid.Parse(f["id"]!)); else return Results.NotFound();
+                return Results.LocalRedirect(back + "&succes=1");
+            }
+            catch (Exception e) when (e is RuleException or FormatException or OverflowException) { return Results.LocalRedirect(back + "&erreur=" + Uri.EscapeDataString("Vérifiez les champs de la position.")); }
+        }).RequireAuthorization().RequireRateLimiting("write");
         app.MapPost("/auth/login", async (HttpContext http, IAntiforgery csrf, IIdentityService identity) =>
         {
             try { await csrf.ValidateRequestAsync(http); } catch (AntiforgeryValidationException) { return Results.BadRequest("Formulaire expiré. Rechargez la page."); }

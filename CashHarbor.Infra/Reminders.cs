@@ -131,6 +131,8 @@ public sealed class SmtpReminderMailer : IReminderMailer
         message.Subject = test ? "CashHarbor — test des rappels" : "CashHarbor — votre point mensuel";
         message.Body = new TextPart("plain") { Text = test ? "Votre configuration SMTP fonctionne. Aucun solde ni donnée bancaire n’est envoyé par e-mail." :
             "Bonjour,\n\nC’est le moment de mettre à jour vos soldes et vos opérations dans CashHarbor. Ouvrez votre application privée via Tailscale pour faire votre point mensuel.\n\nVous pouvez désactiver ce rappel dans Paramètres.\n\nCashHarbor" };
+        var plain = ((TextPart)message.Body).Text;
+        message.Body = new BodyBuilder { TextBody = plain, HtmlBody = ReminderTemplate.Html(test) }.ToMessageBody();
         using var smtp = new MailKit.Net.Smtp.SmtpClient { Timeout = 25000 };
         await smtp.ConnectAsync(settings.Host, settings.Port, settings.Encryption == SmtpEncryption.Tls ? SecureSocketOptions.SslOnConnect : SecureSocketOptions.StartTls, ct);
         await smtp.AuthenticateAsync(settings.Username, password, ct); await smtp.SendAsync(message, ct);

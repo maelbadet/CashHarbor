@@ -1,0 +1,17 @@
+@page "/budget"
+@attribute [Authorize]
+@inherits FinancePage
+<PageTitle>Budget mensuel · CashHarbor</PageTitle>
+<header class="page-header"><div><span class="eyebrow">ESPACE @Space.Label.ToUpperInvariant()</span><h1>Votre budget mensuel<span class="accent">.</span></h1><p>Un repère 50 / 30 / 20 pour répartir vos revenus nets.</p></div></header>
+@if (W != null)
+{
+    var first = new DateOnly(Today.Year, Today.Month, 1);
+    var report = FinancialAnalytics.Build(W, new(first, Today), Today);
+    var income = report.IncomeCents;
+    var needs = income / 2;
+    var wants = income * 30 / 100;
+    var savings = income - needs - wants;
+    <section class="panel"><h2>@Today.ToString("MMMM yyyy", CultureInfo.GetCultureInfo("fr-FR"))</h2><p>Revenus nets enregistrés dans cet espace : <strong>@Euro(income)</strong></p><p class="muted">Cette base inclut les revenus saisis ce mois-ci. Les virements internes et les ajustements sont exclus.</p></section>
+    <section class="stats"><article class="stat"><span>Nécessaire · 50 %</span><strong>@Euro(needs)</strong><small>Logement, alimentation, transport indispensable.</small></article><article class="stat"><span>Vie et envies · 30 %</span><strong>@Euro(wants)</strong><small>Sorties, loisirs et abonnements de confort.</small></article><article class="stat"><span>Épargne · 20 %</span><strong>@Euro(savings)</strong><small>Objectifs et réserve de précaution.</small></article></section>
+    <section class="panel"><h2>Les flux de ce mois</h2><CashFlowChart Workspace="W" Today="Today" Report="report" /><p>Les dépenses ne sont pas encore classées entre nécessaire et envies. Ces enveloppes sont des objectifs, pas des montants disponibles calculés.</p></section>
+}
