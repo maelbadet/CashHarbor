@@ -77,6 +77,7 @@ await Test("Only two provisioned users; reset revokes sessions", async () =>
     Check(!await identity.IsValidAsync(actor, old!.Version), "Reset did not revoke sessions.");
 });
 var today = finance.Today;
+await Test("Market history: currency, ETF type isolation, UTC dates, caching and provider failure", MarketHistoryRegression.Run);
 await Test("Portfolio privacy, encrypted storage and constant-capital simulation", async () =>
 {
     var directory = Path.Combine(runDirectory, "portfolio-tests"); Directory.CreateDirectory(directory);
@@ -94,8 +95,24 @@ await Test("Portfolio privacy, encrypted storage and constant-capital simulation
     Check(InvestmentMath.Scenario(750, 0, today.AddYears(-2), today) == 750, "Zero rate changed capital.");
     Check(InvestmentMath.Scenario(750, 2, today, today) == 750, "Same-day simulation accrued interest.");
     Check(InvestmentMath.Scenario(750, 2, new(2025, 1, 1), new(2026, 1, 1)) is > 764m and < 766m, "Annual scenario incorrect.");
+    var plans = new BudgetPlans(scope.ServiceProvider.GetRequiredService<IWorkspaceStore>(), provider.GetRequiredService<IDataProtectionProvider>(), configuration, new PortfolioGate());
+    await plans.SaveAsync(actor, false, "2026-11", new(2500, 50, 30, 500, 1200, 100, new() { ["Courses"] = 400 }));
+    Check((await plans.ReadAsync(actor, false, "2026-11")).Income == 2500 && (await plans.ReadAsync(partner, false, "2026-11")).Income == 0 && (await plans.ReadAsync(actor, false, "2026-12")).Income == 0, "Monthly plan leaked across users or months.");
+    await plans.SaveAsync(actor, true, "2026-11", new(4000)); Check((await plans.ReadAsync(partner, true, "2026-11")).Income == 4000, "Joint budget missing for partner.");
+    await Reject(() => plans.SaveAsync(actor, false, "2026-11", new(2500, int.MaxValue, 30)));
 });
 await Test("Exact analytics, scopes, partial periods, grouping and CSV", AnalyticsRegression.Run);
+await Test("Flexible projections: median, zero rate, timing, inflation and horizons", () =>
+{
+    Check(InvestmentProjection.Median(new decimal[] { 20, -10, 5, 10 }) == 7.5m, "Even median incorrect.");
+    Check(InvestmentProjection.Median(new decimal[] { -20, 8, 12 }) == 8m, "Odd median incorrect.");
+    foreach (var years in new[] { 1, 2, 5, 10, 17, 20, 30, 41, 60 }) { var row = InvestmentProjection.Calculate(750, 150, years, 0, 0, 0)[^1]; Check(row.Nominal == 750 + 150 * 12 * years && row.Contributed == row.Nominal && row.PurchasingPower == row.Nominal, "Zero-rate projection incorrect."); }
+    var annual = InvestmentProjection.Calculate(1000, 0, 1, 10, 0, 0)[^1]; Check(annual.Nominal == 1100, "Effective annual compounding incorrect.");
+    var negative = InvestmentProjection.Calculate(1000, 0, 1, -10, 0, 0)[^1]; Check(negative.Nominal == 900, "Loss scenario incorrect.");
+    var real = InvestmentProjection.Calculate(1000, 0, 1, 10, 0, 10)[^1]; Check(real.PurchasingPower == 1000, "Inflation adjustment incorrect.");
+    try { InvestmentProjection.Calculate(0, 150, 61, 5, 0, 0); throw new Exception("Invalid horizon accepted."); } catch (RuleException) { }
+    return Task.CompletedTask;
+});
 await Test("Separate personal/couple spaces, expenses, exports and recurrence booking", SpaceRegression.Run);
 await Test("Monthly reminders: consent, encryption, Paris time, retry and persistent deduplication", () => ReminderRegression.Run(factory, provider.GetRequiredService<IDataProtectionProvider>(), runDirectory));
 await finance.AddAccountAsync(actor, "Private Current", "Private Institution", AccountKind.Current, 1000m, today.AddMonths(-3));
@@ -235,7 +252,7 @@ await Test("HTTPS host: authentication, CSRF, protected routes, export, MFA and 
         for (var i = 0; i < 24 && !process.HasExited; i++) { try { var health = await client.GetAsync("/health"); lastHealth = health.StatusCode + " " + await health.Content.ReadAsStringAsync(); if (health.IsSuccessStatusCode) { ready = true; break; } } catch (HttpRequestException e) { lastHealth = e.ToString(); } await Task.Delay(250); }
         if (!ready) Console.Error.WriteLine("Health failure: " + lastHealth);
         if (!ready) throw new Exception("Host did not start: " + (process.HasExited ? await errors : "timeout"));
-        foreach (var route in new[] { "/", "/comptes", "/operations", "/objectifs", "/echeances", "/parametres", "/prets", "/prets/" + samplePrivateLoan.Id, "/export/loan/" + samplePrivateLoan.Id + "/csv", "/export/csv", "/export/json" })
+        foreach (var route in new[] { "/", "/comptes", "/operations", "/objectifs", "/echeances", "/parametres", "/budget", "/projection", "/marches", "/prets", "/prets/" + samplePrivateLoan.Id, "/export/loan/" + samplePrivateLoan.Id + "/csv", "/export/csv", "/export/json" })
             Check((await client.GetAsync(route)).StatusCode is HttpStatusCode.Redirect or HttpStatusCode.Unauthorized, "Anonymous access to " + route);
         var login = await client.GetAsync("/connexion"); var html = await login.Content.ReadAsStringAsync(); Check(login.IsSuccessStatusCode && html.Contains("Votre espace vous attend"), "Login page did not render.");
         var cssPath = WebUtility.HtmlDecode(Regex.Match(html, "rel=\"stylesheet\" href=\"([^\"]+)\"").Groups[1].Value);
@@ -249,7 +266,7 @@ await Test("HTTPS host: authentication, CSRF, protected routes, export, MFA and 
         var response = await client.PostAsync("/auth/login", new FormUrlEncodedContent(values)); Check(response.StatusCode == HttpStatusCode.Redirect && response.Headers.Location?.OriginalString == "/", "Login failed.");
         var authCookie = response.Headers.GetValues("Set-Cookie").Single(c => c.StartsWith("__Host-CashHarbor="));
         Check(authCookie.Contains("secure", StringComparison.OrdinalIgnoreCase) && authCookie.Contains("httponly", StringComparison.OrdinalIgnoreCase) && authCookie.Contains("samesite=strict", StringComparison.OrdinalIgnoreCase), "Cookie is missing protections.");
-        foreach (var route in new[] { "/", "/comptes", "/operations", "/objectifs", "/echeances", "/parametres", "/prets", "/prets/" + samplePrivateLoan.Id }) Check((await client.GetAsync(route)).IsSuccessStatusCode, "Authenticated route failed: " + route);
+        foreach (var route in new[] { "/", "/comptes", "/operations", "/objectifs", "/echeances", "/parametres", "/budget", "/projection", "/marches", "/prets", "/prets/" + samplePrivateLoan.Id }) Check((await client.GetAsync(route)).IsSuccessStatusCode, "Authenticated route failed: " + route);
         Check((await client.PostAsync("/actions/account-add", new FormUrlEncodedContent(new Dictionary<string, string>()))).StatusCode == HttpStatusCode.BadRequest, "Write CSRF accepted.");
         html = await client.GetStringAsync("/comptes"); token = Token(html);
         response = await client.PostAsync("/actions/account-add", new FormUrlEncodedContent(new Dictionary<string, string> { ["__RequestVerificationToken"] = token, ["name"] = "Web Account", ["institution"] = "Bank", ["kind"] = "Current", ["visibility"] = "Personal", ["opening"] = "123.45", ["date"] = DateTime.Today.ToString("yyyy-MM-dd") }));
@@ -261,7 +278,7 @@ await Test("HTTPS host: authentication, CSRF, protected routes, export, MFA and 
         {
             var fixturePath = Path.Combine(httpDirectory, "ui-fixture.json");
             var cookieValues = cookies.GetCookies(new Uri(origin)).Cast<Cookie>().Select(c => new { name = c.Name, value = c.Value, url = origin, secure = c.Secure, httpOnly = c.HttpOnly, sameSite = "Strict" }).ToArray();
-            await File.WriteAllTextAsync(fixturePath, System.Text.Json.JsonSerializer.Serialize(new { origin, cookies = cookieValues, loanRoutes = new[] { "/prets/" + samplePrivateLoan.Id, "/prets/" + sampleSharedLoan.Id } }));
+            await File.WriteAllTextAsync(fixturePath, System.Text.Json.JsonSerializer.Serialize(new { origin, cookies = cookieValues, loanRoutes = new[] { "/prets/" + samplePrivateLoan.Id + "?espace=personnel", "/prets/" + sampleSharedLoan.Id + "?espace=couple" } }));
             try
             {
                 var browserStart = new ProcessStartInfo("node") { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };

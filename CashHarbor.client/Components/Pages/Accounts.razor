@@ -2,11 +2,11 @@
 @attribute [Authorize]
 @inherits FinancePage
 <PageTitle>Comptes et épargne · CashHarbor</PageTitle>
-<header class="page-header"><div><span class="eyebrow">PERSONNEL OU COMMUN, UN SUIVI COMPLET</span><h1>@(SavingsOnly ? "Votre épargne, dans le temps" : "Vos comptes, à leur place")<span class="accent">.</span></h1><p>Vos comptes personnels restent privés. Les comptes communs sont accessibles à vous deux.</p></div><a class="button" href="#ajouter">Ajouter un compte ↗</a></header>
+<header class="page-header"><div><span class="eyebrow">PERSONNEL OU COMMUN, UN SUIVI COMPLET</span><h1>@(SavingsOnly ? "Votre épargne disponible" : InvestmentsOnly ? "Vos comptes de placement" : "Vos comptes, à leur place")<span class="accent">.</span></h1><p>Vos comptes personnels restent privés. Les comptes communs sont accessibles à vous deux.</p></div><a class="button" href="#ajouter">Ajouter un compte ↗</a></header>
 <Notice />
 @if (W != null)
 {
-    var accounts = W.Accounts.Where(a => !SavingsOnly || a.Kind is AccountKind.Savings or AccountKind.Investment).ToArray();
+    var accounts = W.Accounts.Where(a => !SavingsOnly || a.Kind == AccountKind.Savings).Where(a => !InvestmentsOnly || a.Kind == AccountKind.Investment).ToArray();
     <p class="notice neutral">Espace @Space.Label.ToLowerInvariant() : les comptes de cet espace uniquement.</p>   @foreach (var visibility in new[] { AccountVisibility.Personal, AccountVisibility.Joint })
     {
         var group = accounts.Where(a => a.Visibility == visibility).ToArray();
@@ -51,7 +51,7 @@
             <label>Nom du compte<input name="name" placeholder="Mon Livret A, notre compte joint…" maxlength="100" required /></label>
             <input type="hidden" name="visibility" value="@Space.Visibility" /><div><small>Destination</small><p>Espace @Space.Label.ToLowerInvariant()</p></div>
             <label>Établissement<input name="institution" placeholder="Votre banque" maxlength="100" required /></label>
-            <label>Type<select name="kind"><option value="Current">Compte courant</option><option value="Savings">Épargne</option><option value="Investment">Investissement</option></select></label>
+            <label>Type<select name="kind">@if (!SavingsOnly && !InvestmentsOnly) { <option value="Current">Compte courant</option> } @if (!InvestmentsOnly) { <option value="Savings">Épargne disponible</option> } @if (!SavingsOnly) { <option value="Investment">Placement à long terme</option> }</select></label>
             <label>Produit ou support (facultatif)<input name="product" list="products" maxlength="60" placeholder="Livret A, LDDS, PEL, assurance-vie…" /><datalist id="products"><option>Livret A</option><option>LDDS</option><option>LEP</option><option>PEL</option><option>CEL</option><option>Livret bancaire</option><option>Assurance-vie</option><option>PEA</option><option>Compte-titres</option><option>PER</option></datalist><small>Le libellé décrit votre suivi ; les règles de détention et les intérêts ne sont pas calculés automatiquement.</small></label>
             <label>Solde de départ (€)<input name="opening" type="number" step="0.01" min="-100000000" max="100000000" value="0" required /></label>
             <label>Date du solde de départ<input name="date" type="date" value="@Iso(Today)" min="1900-01-01" max="@Iso(Today)" required /></label>
@@ -63,4 +63,5 @@
     [SupplyParameterFromQuery(Name = "vue")] public string? Scope { get; set; }
     [SupplyParameterFromQuery(Name = "type")] public string? TypeFilter { get; set; }
     private bool SavingsOnly => TypeFilter == "epargne";
+    private bool InvestmentsOnly => TypeFilter == "placements";
 }

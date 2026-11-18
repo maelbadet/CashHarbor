@@ -8,7 +8,7 @@
     if (loan == null)
     {
         HttpContext.HttpContext!.Response.StatusCode = 404;
-        <section class="empty"><h1>Prêt introuvable.</h1><a class="button secondary" href="/prets">Revenir à mes prêts</a></section>
+        <section class="empty"><h1>Prêt introuvable.</h1><a class="button secondary" href="@Space.Url("/prets")">Revenir à mes prêts</a></section>
     }
     else
     {

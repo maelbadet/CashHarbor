@@ -1,5 +1,7 @@
 # CashHarbor
 
+Le [guide des budgets et projections](docs/BUDGET-PLANNING.md) couvre les plans mensuels, les plafonds, les provisions et les simulations de versements réguliers à durée libre.
+
 Le [guide du tableau de bord](docs/DASHBOARD.md) décrit les graphiques, les filtres et la mise à jour Docker.
 
 Les [rappels mensuels par SMTP](docs/EMAIL-REMINDERS.md) se configurent dans Paramètres, avec une activation individuelle pour chaque utilisateur.

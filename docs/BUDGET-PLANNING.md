@@ -1,0 +1,13 @@
+# Budget et projection d’épargne
+
+Dans **Budget mensuel**, choisir le mois à préparer. Chaque mois et chaque espace conserve son plan chiffré dans le volume `/data` : revenu prévu, répartition nécessaire/envies/épargne, objectif d’épargne réservé, factures annuelles et marge de sécurité. Les dépenses enregistrées sont comparées aux plafonds par catégorie ; une alerte apparaît à 80 % et en dépassement. Une limite nulle désactive le plafond.
+
+Les provisions annuelles sont divisées par douze pour préparer l’effort mensuel, sans créer d’écriture bancaire. La marge affichée déduit dépenses déjà enregistrées, objectif d’épargne, provisions et réserve du revenu prévisionnel. Elle ne déduit pas des dépenses futures encore non enregistrées : elle ne constitue pas le solde bancaire disponible. Les versements, virements et ajustements ne sont pas automatiquement classés dans le 50/30/20. Les enveloppes par catégorie permettent le suivi concret, indépendamment de ce repère.
+
+Dans **Projection d’épargne**, saisir le capital initial, le versement mensuel, les frais, l’inflation et une durée entière de **1 à 60 ans**, par exemple 17 ou 41. L’aperçu des quatre indicateurs se met à jour à la saisie ; valider recalcule le tableau annuel et les trois scénarios sur le serveur. Les versements ont lieu en fin de mois. Le rendement annuel est converti en facteur mensuel composé ; frais et inflation restent constants.
+
+Une série de rendements annuels peut être saisie avec le format `12.3; -8.4; 19.2`. Le calcul utilise sa médiane, y compris pour un nombre pair de valeurs. L’import Alpha Vantage nécessite une clé et l’accès à `TIME_SERIES_MONTHLY_ADJUSTED` pour le symbole exact de votre ETF/action. Il utilise les années civiles complètes de janvier à décembre avec la clôture ajustée du décembre précédent, exclut l’année courante et conserve jusqu’à trente rendements. Un quota, une couverture insuffisante ou un abonnement incompatible affiche une erreur explicite.
+
+Les scénarios bas et haut déplacent le taux central de trois points : ce ne sont pas des probabilités ni des garanties. La médiane passée n’est pas une prévision du rendement futur et ne reproduit pas la séquence des années, un krach, une vente ou une suspension des versements. Les calculs n’incluent pas la fiscalité, les frais ponctuels ni les changes. L’import ouvre une simulation avec les paramètres par défaut, ensuite modifiables.
+
+Les liens de création conservent désormais l’espace **avant** l’ancre, par exemple `/comptes?espace=couple#ajouter`. Les formulaires conservent leur espace lors des retours. Le défilement est doux et les boutons signalent une soumission en cours ; les utilisateurs préférant réduire les animations sont respectés.

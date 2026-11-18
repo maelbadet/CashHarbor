@@ -8,6 +8,8 @@
             <div class="space-switch" aria-label="Choisir un espace"><a href="/?espace=personnel" class="@(!Space.IsCouple ? "selected" : "")" aria-current="@(!Space.IsCouple ? "page" : null)"><span>◈</span> Personnel<small>Mes comptes privés</small></a><a href="/?espace=couple" class="@(Space.IsCouple ? "selected" : "")" aria-current="@(Space.IsCouple ? "page" : null)"><span>◉</span> Couple<small>Nos finances communes</small></a></div>
             <span class="nav-label">ESPACE @Space.Label.ToUpperInvariant()</span>
             <nav aria-label="Navigation principale">
+                <NavLink href="@Space.Url("/marches")"><span>⌁</span> Courbes des marchés</NavLink>
+                <NavLink href="@Space.Url("/projection")"><span>⌁</span> Projection d’épargne</NavLink>
                 <NavLink href="@Space.Url("/placements")"><span>↗</span> Placements et simulation</NavLink>
                 <NavLink href="@Space.Url("/budget")"><span>▦</span> Budget mensuel</NavLink>
                 <NavLink href="@Space.Url("/")" Match="NavLinkMatch.All"><span>◫</span> Vue d’ensemble</NavLink>

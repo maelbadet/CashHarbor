@@ -36,7 +36,7 @@ try {
   await send('Network.setCookies', { cookies: fixture.cookies });
   for (const width of [1440, 390]) {
     await send('Emulation.setDeviceMetricsOverride', { width, height: width === 390 ? 844 : 1000, deviceScaleFactor: 1, mobile: width === 390 });
-    for (const route of ['/', '/comptes', '/comptes?type=epargne', '/comptes?vue=commun', '/comptes?vue=personnel', '/operations', '/objectifs', '/echeances', '/prets', ...(fixture.loanRoutes ?? []), '/parametres', '/?espace=couple', '/operations?espace=couple', '/objectifs?espace=couple', '/echeances?espace=couple', '/comptes?type=epargne&espace=couple', '/prets?espace=couple', '/connexion']) {
+    for (const route of ['/', '/comptes', '/comptes?type=epargne', '/comptes?vue=commun', '/comptes?vue=personnel', '/operations', '/objectifs', '/echeances', '/prets', ...(fixture.loanRoutes ?? []), '/parametres', '/budget', '/projection', '/marches', '/marches?kind=action', '/marches?kind=crypto', '/?espace=couple', '/operations?espace=couple', '/objectifs?espace=couple', '/echeances?espace=couple', '/comptes?type=epargne&espace=couple', '/prets?espace=couple', '/connexion']) {
       await send('Page.navigate', { url: fixture.origin + route });
       await delay(500);
       for (let i = 0; i < 40; i++) { const r = await send('Runtime.evaluate', { expression: 'document.readyState === "complete"', returnByValue: true }); if (r.result.value) break; await delay(100); }
@@ -46,6 +46,14 @@ try {
       if (route === '/parametres') {
         const reminder = await send('Runtime.evaluate', { expression: `(() => {document.querySelector('.smtp-settings').open=true;const checkbox=document.querySelector('#rappels input[type="checkbox"]');return checkbox.getBoundingClientRect().width<=24 && document.querySelector('[name="smtpPassword"]').value==='';})()`, returnByValue:true });
         if(!reminder.result.value) throw new Error('Reminder form styling or password exposure failed');
+      }
+      if (route === '/projection') {
+        const live = await send('Runtime.evaluate', { expression: `(()=>{const input=document.querySelector('[data-project="years"]');input.value='41';input.dispatchEvent(new Event('input',{bubbles:true}));const text=document.querySelector('[data-projection-contributed]').textContent;return {ok:text.includes('74') && document.querySelector('[data-projection-warning]').textContent.includes('actualisé'),text,warning:document.querySelector('[data-projection-warning]').textContent,invalid:[...document.querySelector('[data-projection]').elements].filter(x=>x.validity&&!x.validity.valid).map(x=>({name:x.name,value:x.value,message:x.validationMessage}))};})()`, returnByValue:true });
+        if(!live.result.value.ok) throw new Error('Live projection for 41 years failed: '+JSON.stringify(live.result.value));
+      }
+      if (route === '/') {
+        const anchors = await send('Runtime.evaluate', { expression: `(()=>{const link=document.querySelector('.heading-actions a');const url=new URL(link.href);return url.hash==='#ajouter' && ['personnel','couple'].includes(url.searchParams.get('espace'));})()`, returnByValue:true });
+        if(!anchors.result.value) throw new Error('Account creation link lost its space or form anchor');
       }
       if (route === '/') {
         const interaction = await send('Runtime.evaluate', { expression: `(() => {

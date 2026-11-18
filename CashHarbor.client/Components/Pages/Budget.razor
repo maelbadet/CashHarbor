@@ -1,17 +1,29 @@
-@page "/budget"
+﻿@page "/budget"
 @attribute [Authorize]
 @inherits FinancePage
-<PageTitle>Budget mensuel · CashHarbor</PageTitle>
-<header class="page-header"><div><span class="eyebrow">ESPACE @Space.Label.ToUpperInvariant()</span><h1>Votre budget mensuel<span class="accent">.</span></h1><p>Un repère 50 / 30 / 20 pour répartir vos revenus nets.</p></div></header>
-@if (W != null)
-{
-    var first = new DateOnly(Today.Year, Today.Month, 1);
-    var report = FinancialAnalytics.Build(W, new(first, Today), Today);
-    var income = report.IncomeCents;
-    var needs = income / 2;
-    var wants = income * 30 / 100;
-    var savings = income - needs - wants;
-    <section class="panel"><h2>@Today.ToString("MMMM yyyy", CultureInfo.GetCultureInfo("fr-FR"))</h2><p>Revenus nets enregistrés dans cet espace : <strong>@Euro(income)</strong></p><p class="muted">Cette base inclut les revenus saisis ce mois-ci. Les virements internes et les ajustements sont exclus.</p></section>
-    <section class="stats"><article class="stat"><span>Nécessaire · 50 %</span><strong>@Euro(needs)</strong><small>Logement, alimentation, transport indispensable.</small></article><article class="stat"><span>Vie et envies · 30 %</span><strong>@Euro(wants)</strong><small>Sorties, loisirs et abonnements de confort.</small></article><article class="stat"><span>Épargne · 20 %</span><strong>@Euro(savings)</strong><small>Objectifs et réserve de précaution.</small></article></section>
-    <section class="panel"><h2>Les flux de ce mois</h2><CashFlowChart Workspace="W" Today="Today" Report="report" /><p>Les dépenses ne sont pas encore classées entre nécessaire et envies. Ces enveloppes sont des objectifs, pas des montants disponibles calculés.</p></section>
+@inject IBudgetPlans Plans
+<PageTitle>Préparer mon budget · CashHarbor</PageTitle>
+<header class="page-header"><div><h1>Préparer mon budget<span class="accent">.</span></h1><p>Salaire prévisionnel, enveloppes, épargne et provisions de l’espace @Space.Label.</p></div><a class="button secondary" href="@Space.Url("/projection")">Simuler mon épargne ↗</a></header>
+<Notice />
+@if(W != null && Plan is {} p) {
+var tx = W.Transactions.Where(t=>t.Date.ToString("yyyy-MM")==Month).ToArray(); var received=tx.Where(t=>t.Kind==EntryKind.Income).Sum(t=>t.Cents)/100m; var spent=-tx.Where(t=>t.Kind==EntryKind.Expense).Sum(t=>t.Cents)/100m; var basis=p.Income>0?p.Income:received;
+<section class="panel"><form method="get" class="filters"><SpaceField /><label>Mois<input name="mois" type="month" value="@Month" required /></label><button>Ouvrir</button></form></section>
+<section class="stats"><article class="stat"><span>Revenus prévus / reçus</span><strong>@Money(basis)</strong><small>@Money(received) reçus</small></article><article class="stat"><span>Dépenses enregistrées</span><strong>@Money(spent)</strong></article><article class="stat"><span>Marge après réservations</span><strong>@Money(basis-spent-p.SavingsGoal-p.AnnualBills/12-p.SafetyBuffer)</strong><small>Prévision − dépenses − épargne − provisions − réserve</small></article></section>
+<section class="panel"><h2>Plan du mois</h2><form action="/budget/save" method="post" class="form-grid"><AntiforgeryToken /><SpaceField /><input type="hidden" name="month" value="@Month" />
+<label>Salaire net et revenus prévus (€)<input name="income" type="number" min="0" max="100000000" step="0.01" value="@Num(p.Income)" required /></label><label>Nécessaire (%)<input name="needs" type="number" min="0" max="100" value="@p.NeedsPercent" required /></label><label>Envies (%)<input name="wants" type="number" min="0" max="100" value="@p.WantsPercent" required /></label><label>Épargne à réserver (€)<input name="saving" type="number" min="0" max="100000000" step="0.01" value="@Num(p.SavingsGoal)" required /></label><label>Provisions annuelles (€ / an)<input name="annual" type="number" min="0" max="100000000" step="0.01" value="@Num(p.AnnualBills)" required /></label><label>Marge de sécurité (€)<input name="buffer" type="number" min="0" max="100000000" step="0.01" value="@Num(p.SafetyBuffer)" required /></label>
+<div class="form-actions"><h3>Plafonds par catégorie</h3><p>Un montant nul désactive le plafond.</p></div>
+@foreach(var c in FinanceService.Categories.Where(c=>c!="Salaire")){<label>@c (€)<input name="cap_@c" type="number" min="0" max="100000000" step="0.01" value="@Num(p.Limits?.GetValueOrDefault(c)??0)" /></label>}
+<div class="form-actions"><button>Enregistrer ce mois</button></div></form></section>
+<section class="panel"><h2>Répartition cible</h2><p>Nécessaire : <strong>@Money(basis*p.NeedsPercent/100)</strong> · Envies : <strong>@Money(basis*p.WantsPercent/100)</strong> · Épargne : <strong>@Money(basis*(100-p.NeedsPercent-p.WantsPercent)/100)</strong></p><p>Repère par défaut : 50 / 30 / 20. Les dépenses sont suivies par catégorie, sans classification nécessaire/envies automatique.</p></section>
+<section class="panel"><h2>Enveloppes et alertes</h2><div class="table-scroll"><table><thead><tr><th>Catégorie</th><th>Plafond</th><th>Dépensé</th><th>Reste</th><th>État</th></tr></thead><tbody>
+@foreach(var c in FinanceService.Categories.Where(c=>c!="Salaire")){var limit=p.Limits?.GetValueOrDefault(c)??0;var used=-tx.Where(t=>t.Kind==EntryKind.Expense&&t.Category==c).Sum(t=>t.Cents)/100m;<tr><td>@c</td><td>@(limit>0?Money(limit):"Non défini")</td><td>@Money(used)</td><td>@(limit>0?Money(limit-used):"—")</td><td>@(limit==0?"Sans plafond":used>limit?"Dépassé":used>=limit*.8m?"80 % atteints":"Dans l’enveloppe")</td></tr>}
+</tbody></table></div><p>La marge est une prévision, pas le solde bancaire. Elle ne déduit pas les dépenses futures non enregistrées. Virements et ajustements sont exclus des dépenses.</p></section>
+<section class="panel"><h2>Préparer les factures et imprévus</h2><p>Charges essentielles récurrentes : @Euro(FinanceService.EssentialMonthlyCents(W)) par mois en équivalent. Votre provision manuelle annuelle réserve @Money(p.AnnualBills/12) par mois sans créer de débit.</p><a href="@Space.Url("/echeances")">Vérifier mes échéances ↗</a><p>Évitez de réserver deux fois une facture dans les provisions et les enveloppes. Chaque mois conserve son propre plan chiffré.</p></section>
+}
+@code {
+[SupplyParameterFromQuery(Name="mois")] public string? Month {get;set;}
+private BudgetPlan? Plan;
+private static string Num(decimal v)=>v.ToString(CultureInfo.InvariantCulture);
+private static string Money(decimal v)=>v.ToString("N2",CultureInfo.GetCultureInfo("fr-FR"))+" €";
+protected override async Task OnInitializedAsync(){await base.OnInitializedAsync();if(!DateOnly.TryParseExact(Month+"-01","yyyy-MM-dd",out var d)||d.Year is <1900 or >2200)Month=Today.ToString("yyyy-MM");Plan=await Plans.ReadAsync(Actor,Space.IsCouple,Month!);}
 }

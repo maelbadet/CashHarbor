@@ -12,7 +12,11 @@ public sealed class SpaceContext(IHttpContextAccessor accessor)
     public string Label => IsCouple ? "Couple" : "Personnel";
     public string ScopeKey => IsCouple ? "commun" : "personnel";
     public Workspace Select(Workspace authorized) => WorkspaceSpaces.Select(authorized, Visibility);
-    public string Url(string path) => path + (path.Contains('?') ? "&" : "?") + "espace=" + Key;
+    public string Url(string path)
+    {
+        var parts = path.Split('#', 2); var url = parts[0];
+        return url + (url.Contains('?') ? "&" : "?") + "espace=" + Key + (parts.Length == 2 ? "#" + parts[1] : "");
+    }
     public static string Resolve(HttpRequest request)
     {
         var explicitSpace = request.Query["espace"].ToString();

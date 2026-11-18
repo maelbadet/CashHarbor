@@ -13,6 +13,39 @@ public static class Endpoints
 {
     public static void MapCashHarborEndpoints(this WebApplication app)
     {
+        app.MapPost("/projection/history", async (HttpContext http, IAntiforgery csrf, IConfiguration configuration, IHttpClientFactory clients) =>
+        {
+            try { await csrf.ValidateRequestAsync(http); } catch (AntiforgeryValidationException) { return Results.BadRequest(); }
+            var f = await http.Request.ReadFormAsync(); var symbol = f["symbol"].ToString().Trim();
+            if (!System.Text.RegularExpressions.Regex.IsMatch(symbol, "^[a-zA-Z0-9.^_-]{1,50}$") || f["espace"].ToString() is not ("personnel" or "couple")) return Results.BadRequest();
+            var back = "/projection?espace=" + f["espace"];
+            if (configuration["Markets:AlphaVantageKey"] is not { Length: > 0 } key) return Results.LocalRedirect(back + "&erreur=" + Uri.EscapeDataString("Configurez la clé Alpha Vantage pour importer l’historique ajusté."));
+            try
+            {
+                using var client = clients.CreateClient(); client.Timeout = TimeSpan.FromSeconds(10);
+                using var json = JsonDocument.Parse(await client.GetStringAsync("https://www.alphavantage.co/query?function=TIME_SERIES_MONTHLY_ADJUSTED&symbol=" + Uri.EscapeDataString(symbol) + "&apikey=" + Uri.EscapeDataString(key)));
+                var values = json.RootElement.GetProperty("Monthly Adjusted Time Series").EnumerateObject().Select(p => (Date: DateOnly.ParseExact(p.Name, "yyyy-MM-dd", CultureInfo.InvariantCulture), Value: decimal.Parse(p.Value.GetProperty("5. adjusted close").GetString()!, CultureInfo.InvariantCulture))).ToArray();
+                var returns = new List<decimal>();
+                foreach (var year in values.Select(v => v.Date.Year).Distinct().Order())
+                {
+                    if (year >= DateTime.UtcNow.Year || values.Where(v => v.Date.Year == year).Select(v => v.Date.Month).Distinct().Count() != 12) continue;
+                    var previous = values.SingleOrDefault(v => v.Date.Year == year - 1 && v.Date.Month == 12); var last = values.Single(v => v.Date.Year == year && v.Date.Month == 12);
+                    if (previous.Value > 0) returns.Add((last.Value / previous.Value - 1) * 100);
+                }
+                if (returns.Count < 3) throw new RuleException("Historique complet insuffisant.");
+                var history = string.Join(';', returns.TakeLast(30).Select(v => v.ToString("0.####", CultureInfo.InvariantCulture)));
+                return Results.LocalRedirect(back + "&source=" + Uri.EscapeDataString(symbol) + "&history=" + Uri.EscapeDataString(history));
+            }
+            catch (Exception e) when (e is HttpRequestException or TaskCanceledException or JsonException or KeyNotFoundException or FormatException or InvalidOperationException or RuleException) { return Results.LocalRedirect(back + "&erreur=" + Uri.EscapeDataString("Historique ajusté indisponible : vérifiez le symbole, la couverture, l’abonnement et le quota API.")); }
+        }).RequireAuthorization().RequireRateLimiting("write");
+        app.MapPost("/budget/save", async (HttpContext http, IAntiforgery csrf, IBudgetPlans plans) =>
+        {
+            try { await csrf.ValidateRequestAsync(http); } catch (AntiforgeryValidationException) { return Results.BadRequest(); }
+            var f = await http.Request.ReadFormAsync(); if (f["espace"].ToString() is not ("personnel" or "couple")) return Results.BadRequest();
+            var back = "/budget?espace=" + f["espace"] + "&mois=" + Uri.EscapeDataString(f["month"].ToString());
+            try { decimal M(string key) => decimal.Parse(f[key].ToString(), CultureInfo.InvariantCulture); var limits = FinanceService.Categories.Where(c => c != "Salaire").ToDictionary(c => c, c => string.IsNullOrEmpty(f["cap_" + c]) ? 0 : M("cap_" + c)); await plans.SaveAsync(Guid.Parse(http.User.FindFirstValue(ClaimTypes.NameIdentifier)!), f["espace"] == "couple", f["month"].ToString(), new(M("income"), int.Parse(f["needs"]!), int.Parse(f["wants"]!), M("saving"), M("annual"), M("buffer"), limits)); return Results.LocalRedirect(back + "&succes=1"); }
+            catch (Exception e) when (e is RuleException or FormatException or OverflowException) { return Results.LocalRedirect(back + "&erreur=" + Uri.EscapeDataString("Vérifiez les montants et les pourcentages.")); }
+        }).RequireAuthorization().RequireRateLimiting("write");
         app.MapPost("/portfolio/{action}", async (string action, HttpContext http, IAntiforgery csrf, IPortfolio portfolio) =>
         {
             try { await csrf.ValidateRequestAsync(http); } catch (AntiforgeryValidationException) { return Results.BadRequest(); }
@@ -130,6 +163,6 @@ public static class Endpoints
             return Results.LocalRedirect(back + "?succes=1&espace=" + spaceKey);
         }
         catch (RuleException e) { return Results.LocalRedirect(back + "?espace=" + spaceKey + "&erreur=" + Uri.EscapeDataString(e.Message)); }
-        catch (Exception e) when (e is FormatException or OverflowException or ArgumentException) { return Results.LocalRedirect(back + "?erreur=" + Uri.EscapeDataString("Vérifiez les champs du formulaire : montant, date et sélection.")); }
+        catch (Exception e) when (e is FormatException or OverflowException or ArgumentException) { return Results.LocalRedirect(back + "?espace=" + spaceKey + "&erreur=" + Uri.EscapeDataString("Vérifiez les champs du formulaire : montant, date et sélection.")); }
     }
 }

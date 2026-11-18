@@ -1,0 +1,36 @@
+@page "/marches"
+@attribute [Authorize]
+@inherits FinancePage
+@inject IMarketHistory History
+@inject IPortfolio Portfolio
+<PageTitle>Comparer les cours · CashHarbor</PageTitle>
+<header class="page-header"><div><h1>Comparer les cours<span class="accent">.</span></h1><p>Plusieurs titres d’un même type, une période et des dates communes.</p></div></header>
+<nav class="scope-tabs" aria-label="Type de marché">@foreach(var type in new[]{"etf","action","crypto"}){<a class="@(MarketKind==type?"active":"")" href="@Space.Url("/marches?kind="+type)">@Label(type)</a>}</nav>
+<section class="panel"><form method="get" class="form-grid"><SpaceField /><input type="hidden" name="kind" value="@MarketKind" /><label>Premier titre<input name="one" value="@One" list="market-symbols" maxlength="50" placeholder="Identifiant du fournisseur" /></label><label>Deuxième titre<input name="two" value="@Two" list="market-symbols" maxlength="50" /></label><label>Troisième titre<input name="three" value="@Three" list="market-symbols" maxlength="50" /></label><datalist id="market-symbols">@foreach(var symbol in Symbols){<option value="@symbol" />}</datalist><label>Du<input name="from" type="date" value="@Iso(FromDate)" min="1900-01-01" max="@Iso(Today)" required /></label><label>Au<input name="to" type="date" value="@Iso(ToDate)" min="1900-01-01" max="@Iso(Today)" required /></label><label>Affichage<select name="mode"><option value="price" selected="@(Mode != "base100")">Prix dans la devise de cotation</option><option value="base100" selected="@(Mode == "base100")">Performance relative · base 100</option></select></label><button>Afficher les courbes</button></form><p>@(MarketKind=="crypto"?"Identifiants CoinGecko : bitcoin, ethereum, solana… Prix en EUR, points quotidiens UTC. L’historique gratuit est limité à un an.":"Symboles Alpha Vantage exacts, propres au titre et à sa place. La clé API doit être configurée. Les historiques sont mensuels, non ajustés ; les divisions de titres et dividendes peuvent affecter la comparaison.")</p><p>Les suggestions proviennent uniquement des positions de cet espace et du type choisi. Aucun mélange ETF / actions / cryptos.</p></section>
+@foreach(var message in Messages){<p class="notice neutral">@message</p>}
+@if(Dates.Length>1 && Series.Count>0){<section class="panel"><div class="section-heading"><div><span class="eyebrow">@Label(MarketKind).ToUpperInvariant()</span><h2>@(Mode=="base100"?"Évolution en base 100":"Historique des prix")</h2></div><span class="tag">@Unit</span></div><TimeSeriesChart Dates="Dates" Series="Series" Unit="@Unit" Title="@("Comparaison historique · " + Unit)" AxisNote="Seules les dates présentes pour tous les titres retenus sont utilisées ; aucun cours manquant n’est inventé." /><p>@(Mode=="base100"?"Chaque titre vaut 100 à la première date commune. Cette vue compare les variations dans leurs devises respectives, sans conversion de change ni réinvestissement des dividendes.":"Un prix unitaire ne représente pas la performance ni la valeur de votre portefeuille.")</p><ul>@foreach(var h in Histories){<li>@h.Symbol · @h.Currency · @h.Source · dernier point @h.Prices[^1].Date.ToString("dd/MM/yyyy")</li>}</ul></section>}
+@code {
+[SupplyParameterFromQuery(Name="kind")]public string? MarketKind{get;set;}
+[SupplyParameterFromQuery(Name="one")]public string? One{get;set;}
+[SupplyParameterFromQuery(Name="two")]public string? Two{get;set;}
+[SupplyParameterFromQuery(Name="three")]public string? Three{get;set;}
+[SupplyParameterFromQuery(Name="from")]public string? From{get;set;}
+[SupplyParameterFromQuery(Name="to")]public string? To{get;set;}
+[SupplyParameterFromQuery(Name="mode")]public string? Mode{get;set;}
+private DateOnly FromDate,ToDate;private DateOnly[] Dates=[];private string Unit="EUR";private List<ChartSeries> Series=[];private List<PriceHistory> Histories=[];private List<string> Messages=[];private string[] Symbols=[];
+private static string Label(string? type)=>type=="crypto"?"Cryptos":type=="action"?"Actions":"ETF";
+protected override async Task OnInitializedAsync(){
+ await base.OnInitializedAsync();MarketKind=MarketKind is "crypto" or "action" or "etf"?MarketKind:"etf";Mode=Mode=="base100"?Mode:"price";
+ FromDate=DateOnly.TryParseExact(From,"yyyy-MM-dd",out var start)?start:Today.AddMonths(-6);ToDate=DateOnly.TryParseExact(To,"yyyy-MM-dd",out var end)?end:Today;
+ Symbols=(await Portfolio.ReadAsync(Actor,Space.IsCouple)).Where(h=>h.Kind==MarketKind).Select(h=>h.Symbol).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+ if(FromDate.Year<1900||ToDate>Today||FromDate>=ToDate||ToDate.DayNumber-FromDate.DayNumber>3660){Messages.Add("Choisissez une période passée ou courante de dix ans maximum.");return;}
+ var symbols=new[]{One,Two,Three}.Where(s=>!string.IsNullOrWhiteSpace(s)).Select(s=>s!.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();if(symbols.Length==0){Messages.Add("Sélectionnez jusqu’à trois titres de ce type pour tracer leurs courbes.");return;}
+ var histories=await Task.WhenAll(symbols.Select(s=>History.ReadAsync(MarketKind,s,FromDate,ToDate)));
+ for(var i=0;i<symbols.Length;i++){var h=histories[i];if(h==null||h.Prices.Count<2)Messages.Add(symbols[i]+" : historique indisponible ou insuffisant. Vérifiez le type de titre, le symbole, la clé API, le quota et les limites de période.");else Histories.Add(h);}
+ if(Histories.Count==0)return;
+ if(Mode=="price"&&Histories.Select(h=>h.Currency).Distinct().Count()>1){Messages.Add("Ces titres sont cotés dans des devises différentes. Choisissez la base 100 pour les comparer sans conversion implicite.");return;}
+ Dates=Histories.Select(h=>h.Prices.Select(p=>p.Date).ToHashSet()).Aggregate((a,b)=>{a.IntersectWith(b);return a;}).Order().ToArray();if(Dates.Length<2){Messages.Add("Pas assez de dates communes : essayez une autre période ou moins de titres.");return;}
+ Unit=Mode=="base100"?"base 100":Histories[0].Currency;
+ for(var i=0;i<Histories.Count;i++){var h=Histories[i];var lookup=h.Prices.ToDictionary(p=>p.Date,p=>p.Price);var baseline=lookup[Dates[0]];var values=Dates.Select(d=>Mode=="base100"?lookup[d]/baseline*100:lookup[d]).ToArray();if(values.Any(v=>v>long.MaxValue/100m)){Messages.Add(h.Symbol+" : valeurs trop élevées pour le graphique.");continue;}Series.Add(new(h.Symbol,values.Select(v=>(long)decimal.Round(v*100)).ToArray(),i==0?"series-total":i==1?"series-personal":"series-joint"));}
+}
+}

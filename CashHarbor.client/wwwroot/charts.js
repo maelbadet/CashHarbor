@@ -70,3 +70,22 @@ for (const select of document.querySelectorAll('[data-period-select]')) select.a
   const custom = select.closest('form').querySelector('[data-custom-dates]'); custom.hidden = select.value !== 'custom';
   custom.querySelectorAll('input').forEach(input => { input.required = select.value === 'custom'; });
 });
+// Approximate live scenarios; the server calculates the authoritative annual table on submit.
+for(const form of document.querySelectorAll('[data-projection]')){
+ const money=new Intl.NumberFormat('fr-FR',{style:'currency',currency:'EUR'});
+ form.addEventListener('input',()=>{
+  const get=k=>Number(form.querySelector(`[data-project="${k}"]`).value);
+  const initial=get('initial'),monthly=get('monthly'),years=get('years'),rate=get('rate'),fees=get('fees'),inflation=get('inflation');
+  const history=form.querySelector('[name="history"]').value.trim();
+  const warning=document.querySelector('[data-projection-warning]');if(!warning)return;
+  let effectiveRate=rate; if(history){const values=history.split(/[;\\r\\n]+/).filter(v=>v.trim()).map(Number).sort((a,b)=>a-b);if(values.length<3||values.some(v=>!Number.isFinite(v)||v<=-100||v>1000)){warning.textContent='Vérifiez les rendements historiques.';return;}const middle=Math.floor(values.length/2);effectiveRate=values.length%2?values[middle]:(values[middle-1]+values[middle])/2;if(effectiveRate<=-100||effectiveRate>50){warning.textContent='La médiane dépasse les limites de simulation.';return;}}
+  if(!form.checkValidity()||!Number.isInteger(years)||years<1||years>60){warning.textContent='Vérifiez les paramètres de simulation.';return;}
+  let total=initial;const factor=Math.pow((1+effectiveRate/100)*(1-fees/100),1/12);
+  for(let m=0;m<years*12;m++)total=total*factor+monthly;
+  if(!Number.isFinite(total)||total>1e18){warning.textContent='Résultat trop élevé pour cette simulation.';return;}
+  const contributed=initial+monthly*years*12;
+  for(const [key,value] of Object.entries({total,contributed,gain:total-contributed,real:total/Math.pow(1+inflation/100,years)}))document.querySelector(`[data-projection-${key}]`).textContent=money.format(value);
+  warning.textContent='Aperçu estimatif actualisé. Validez pour mettre à jour le tableau et les trois scénarios.';
+ });
+}
+for(const form of document.querySelectorAll('form[method="post"]'))form.addEventListener('submit',()=>{const button=form.querySelector('button[type="submit"],button:not([type])');if(button){button.setAttribute('aria-busy','true');button.dataset.originalLabel=button.textContent;button.textContent='Enregistrement…';setTimeout(()=>{button.removeAttribute('aria-busy');button.textContent=button.dataset.originalLabel},15000)}});

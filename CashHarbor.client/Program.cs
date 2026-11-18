@@ -49,7 +49,9 @@ builder.Services.AddScoped<SpaceContext>();
 builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<PortfolioGate>();
 builder.Services.AddScoped<IPortfolio, Portfolio>();
+builder.Services.AddScoped<IBudgetPlans, BudgetPlans>();
 builder.Services.AddHttpClient<IMarketPrices, MarketPrices>(c => { c.Timeout = TimeSpan.FromSeconds(8); c.DefaultRequestHeaders.UserAgent.ParseAdd("CashHarbor/1.0"); });
+builder.Services.AddHttpClient<IMarketHistory, MarketHistory>(c => { c.Timeout = TimeSpan.FromSeconds(12); c.DefaultRequestHeaders.UserAgent.ParseAdd("CashHarbor/1.0"); });
 builder.Logging.AddFilter("System.Net.Http.HttpClient", LogLevel.None);
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme).AddCookie(options =>
 {

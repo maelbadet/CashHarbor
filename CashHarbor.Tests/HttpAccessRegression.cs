@@ -62,6 +62,12 @@ internal static class HttpAccessRegression
         Check(!(await first.GetStringAsync("/export/json")).Contains("B_PRIVATE"), "New partner account leaked after joint update.");
         await CheckLoansAsync(first, second, token, firstActor, secondActor);
         await CheckAnnualRecurrencesAsync(first, second, token, firstActor, sharedAccount);
+        response = await second.PostAsync("/budget/save", Form(new() { ["espace"] = "couple" }));
+        Check(response.StatusCode == HttpStatusCode.BadRequest, "Budget update accepted without CSRF.");
+        var budgetMonth = DateTime.Today.ToString("yyyy-MM");
+        response = await second.PostAsync("/budget/save", Form(new() { ["__RequestVerificationToken"] = token, ["espace"] = "couple", ["month"] = budgetMonth, ["income"] = "4000", ["needs"] = "50", ["wants"] = "30", ["saving"] = "800", ["annual"] = "1200", ["buffer"] = "100", ["cap_Courses"] = "500" }));
+        Check(response.Headers.Location?.OriginalString.Contains("succes=1") == true && response.Headers.Location.OriginalString.Contains("espace=couple"), "Budget form redirect or persistence failed.");
+        Check((await first.GetStringAsync("/budget?espace=couple&mois=" + budgetMonth)).Contains("value=\"4000\""), "Partner cannot read saved joint plan.");
         foreach (var client in new[] { first, second })
         {
             foreach (var key in new[] { "personnel", "couple" })
