@@ -1,6 +1,6 @@
 namespace CashHarbor.Domain;
 
-public enum AccountKind { Current, Savings, Investment }
+public enum AccountKind { Current, Savings, Investment, Crypto }
 public enum EntryKind { Expense, Income, Transfer, Adjustment }
 // Zero deliberately means unclassified: legacy data must not silently become shared.
 public enum AccountVisibility { Unassigned, Personal, Joint }
@@ -8,7 +8,7 @@ public enum RecurrenceFrequency { Monthly, Yearly }
 public sealed record FinancialAccount(Guid Id, string Name, string Institution, AccountKind Kind, long OpeningCents, DateOnly OpeningDate, AccountVisibility Visibility = AccountVisibility.Unassigned, Guid? OwnerId = null, string Product = "");
 public sealed record Transaction(Guid Id, Guid AccountId, string Label, string Category, long Cents, DateOnly Date, EntryKind Kind, Guid? TransferId = null, Guid? RecurrenceId = null, Guid? LoanId = null, int? LoanInstallment = null);
 public sealed record FinancialGoal(Guid Id, string Name, long TargetCents, long SavedCents, DateOnly? Deadline, AccountVisibility Visibility = AccountVisibility.Unassigned, Guid? OwnerId = null, Guid? AccountId = null);
-public sealed record RecurringOperation(Guid Id, Guid AccountId, string Label, string Category, long Cents, DateOnly NextDate, int DayOfMonth, bool Essential, bool Active = true, RecurrenceFrequency Frequency = RecurrenceFrequency.Monthly, int? MonthOfYear = null)
+public sealed record RecurringOperation(Guid Id, Guid AccountId, string Label, string Category, long Cents, DateOnly NextDate, int DayOfMonth, bool Essential, bool Active = true, RecurrenceFrequency Frequency = RecurrenceFrequency.Monthly, int? MonthOfYear = null, Guid? TargetAccountId = null)
 {
     public decimal MonthlyEquivalentCents => Frequency == RecurrenceFrequency.Yearly ? Cents / 12m : Cents;
     public DateOnly Following(DateOnly current)

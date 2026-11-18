@@ -18,7 +18,7 @@ public static class WorkspaceAccess
             Name = source.Name, Currency = source.Currency, EmergencyPolicy = source.EmergencyPolicy,
             Accounts = accounts, Transactions = source.Transactions.Where(t => ids.Contains(t.AccountId)).ToList(),
             Goals = source.Goals.Where(g => CanSee(g.Visibility, g.OwnerId, actor)).ToList(),
-            Recurrences = source.Recurrences.Where(r => ids.Contains(r.AccountId)).ToList(),
+            Recurrences = source.Recurrences.Where(r => ids.Contains(r.AccountId) && (r.TargetAccountId==null||ids.Contains(r.TargetAccountId.Value))).ToList(),
             Snapshots = source.Snapshots.Where(s => ids.Contains(s.AccountId)).ToList(),
             Loans = loans, LoanPayments = source.LoanPayments.Where(p => loanIds.Contains(p.LoanId)).ToList()
         };
@@ -31,6 +31,8 @@ public static class WorkspaceAccess
         var accountIds = original.Accounts.Select(a => a.Id).ToHashSet();
         var goalIds = original.Goals.Select(g => g.Id).ToHashSet();
         var loanIds = original.Loans.Select(l => l.Id).ToHashSet();
+        var recurrenceIds=original.Recurrences.Select(r=>r.Id).ToHashSet();
+        foreach(var r in changed.Recurrences)if(r.TargetAccountId is {} destination && (!changed.Accounts.Any(a=>a.Id==destination)||r.Cents>=0||destination==r.AccountId))throw new RuleException("Virement récurrent invalide ou compte inaccessible.");
         foreach (var loan in changed.Loans)
         {
             var previous = full.Loans.SingleOrDefault(l => l.Id == loan.Id);
@@ -71,6 +73,7 @@ public static class WorkspaceAccess
             if (previous != null && !goalIds.Contains(g.Id)) throw new RuleException("Objectif introuvable.");
         }
         var changedAccountIds = changed.Accounts.Select(a => a.Id).ToHashSet();
+        if(full.Recurrences.Any(r=>(accountIds.Contains(r.AccountId)&&!changedAccountIds.Contains(r.AccountId))||(r.TargetAccountId is {} target&&accountIds.Contains(target)&&!changedAccountIds.Contains(target))))throw new RuleException("Ce compte est encore utilisé par une récurrence. Arrêtez-la avant de supprimer le compte.");
         if (changed.Transactions.Any(t => !changedAccountIds.Contains(t.AccountId)) || changed.Recurrences.Any(r => !changedAccountIds.Contains(r.AccountId)) || changed.Snapshots.Any(s => !changedAccountIds.Contains(s.AccountId)))
             throw new RuleException("Compte introuvable.");
         // A shared transfer leg must not let the partner mutate a hidden personal account.
@@ -78,10 +81,10 @@ public static class WorkspaceAccess
         if (full.Transactions.Any(t => t.TransferId != null && removedGroups.Contains(t.TransferId) && !accountIds.Contains(t.AccountId)))
             throw new RuleException("Seul le titulaire du compte personnel lié peut supprimer ce virement.");
         RejectForeignIds(full.Transactions, changed.Transactions, t => t.Id, t => accountIds.Contains(t.AccountId));
-        RejectForeignIds(full.Recurrences, changed.Recurrences, r => r.Id, r => accountIds.Contains(r.AccountId));
+        RejectForeignIds(full.Recurrences, changed.Recurrences, r => r.Id, r => recurrenceIds.Contains(r.Id));
         full.Accounts.RemoveAll(a => accountIds.Contains(a.Id)); full.Accounts.AddRange(changed.Accounts);
         full.Transactions.RemoveAll(t => accountIds.Contains(t.AccountId)); full.Transactions.AddRange(changed.Transactions);
-        full.Recurrences.RemoveAll(r => accountIds.Contains(r.AccountId)); full.Recurrences.AddRange(changed.Recurrences);
+        full.Recurrences.RemoveAll(r => recurrenceIds.Contains(r.Id)); full.Recurrences.AddRange(changed.Recurrences);
         full.Snapshots.RemoveAll(s => accountIds.Contains(s.AccountId)); full.Snapshots.AddRange(changed.Snapshots);
         full.Goals.RemoveAll(g => goalIds.Contains(g.Id)); full.Goals.AddRange(changed.Goals);
         full.Loans.RemoveAll(l => loanIds.Contains(l.Id)); full.Loans.AddRange(changed.Loans);

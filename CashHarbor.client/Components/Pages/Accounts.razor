@@ -7,11 +7,12 @@
 @if (W != null)
 {
     var accounts = W.Accounts.Where(a => !SavingsOnly || a.Kind == AccountKind.Savings).Where(a => !InvestmentsOnly || a.Kind == AccountKind.Investment).ToArray();
-    <p class="notice neutral">Espace @Space.Label.ToLowerInvariant() : les comptes de cet espace uniquement.</p>   @foreach (var visibility in new[] { AccountVisibility.Personal, AccountVisibility.Joint })
+    <p class="notice neutral">Espace @Space.Label.ToLowerInvariant() : les comptes de cet espace uniquement.</p>   @foreach (var category in new[] { 0, 1, 2 })
     {
-        var group = accounts.Where(a => a.Visibility == visibility).ToArray();
+        var visibility=Space.Visibility;
+        var group = accounts.Where(a => (a.Kind == AccountKind.Crypto ? 2 : a.Kind == AccountKind.Investment ? 1 : 0) == category).OrderBy(a=>a.Kind==AccountKind.Current?0:1).ThenBy(a=>a.Name).ToArray();
         if (group.Length == 0) { continue; }
-        <div class="section-heading account-section"><div><span class="eyebrow">@Visibility(visibility)</span><h2>@(visibility == AccountVisibility.Personal ? "Mes comptes personnels" : "Nos comptes communs")</h2></div><strong>@Euro(group.Sum(a => W.Balance(a.Id)))</strong></div>
+        <div class="section-heading account-section"><div><span class="eyebrow">@Visibility(visibility)</span><h2>@(category==0?"Comptes courants et livrets":category==1?"Placements et actions":"Cryptos")</h2></div><strong>@Euro(group.Sum(a => W.Balance(a.Id)))</strong></div>
         <div class="account-grid">
         @foreach (var a in group)
         {
@@ -36,7 +37,7 @@
                         <div class="table-scroll"><table><thead><tr><th>Date</th><th>Solde constaté</th></tr></thead><tbody>@foreach (var s in W.Snapshots.Where(s => s.AccountId == a.Id).OrderByDescending(s => s.Date)) { <tr><td>@s.Date.ToString("dd/MM/yyyy")</td><td>@Euro(s.BalanceCents)</td></tr> }</tbody></table></div>
                     }
                 </details>
-                <details><summary>Modifier ce compte</summary><form class="stack" method="post" action="/actions/account-edit"><AntiforgeryToken /><SpaceField /><input type="hidden" name="id" value="@a.Id" /><label>Nom<input name="name" value="@a.Name" maxlength="100" required /></label><label>Établissement<input name="institution" value="@a.Institution" maxlength="100" required /></label><label>Produit ou livret<input name="product" list="products" value="@a.Product" maxlength="60" /><small>Choisir Livret A, LEP ou Livret jeune pour afficher son plafond.</small></label><button class="secondary">Enregistrer</button></form></details>
+                <details><summary>Modifier ce compte</summary><form class="stack" method="post" action="/actions/account-edit"><AntiforgeryToken /><SpaceField /><input type="hidden" name="id" value="@a.Id" /><label>Nom<input name="name" value="@a.Name" maxlength="100" required /></label><label>Établissement<input name="institution" value="@a.Institution" maxlength="100" required /></label><label>Type de compte<select name="kind">@foreach(var type in Enum.GetValues<AccountKind>()){<option value="@type" selected="@(a.Kind==type)">@Kind(type)</option>}</select></label><label>Produit ou livret<input name="product" list="products" value="@a.Product" maxlength="60" /><small>Choisir Livret A, LEP ou Livret jeune pour afficher son plafond.</small></label><button class="secondary">Enregistrer</button></form></details>
                 @if (a.Visibility == AccountVisibility.Personal)
                 {
                     <details class="danger-zone"><summary>Partager ce compte avec mon foyer</summary><p>Son nom, ses soldes, toutes ses opérations passées et futures ainsi que ses échéances deviendront visibles par vous deux. Le partage ne peut pas être annulé depuis l’interface.</p><form class="stack" method="post" action="/actions/account-share"><AntiforgeryToken /><SpaceField /><input type="hidden" name="id" value="@a.Id" /><label class="checkbox"><input type="checkbox" name="confirm" required /> Je confirme le partage de tout l’historique.</label><button>Rendre ce compte commun</button></form></details>
@@ -52,7 +53,7 @@
             <label>Nom du compte<input name="name" placeholder="Mon Livret A, notre compte joint…" maxlength="100" required /></label>
             <input type="hidden" name="visibility" value="@Space.Visibility" /><div><small>Destination</small><p>Espace @Space.Label.ToLowerInvariant()</p></div>
             <label>Établissement<input name="institution" placeholder="Votre banque" maxlength="100" required /></label>
-            <label>Type<select name="kind">@if (!SavingsOnly && !InvestmentsOnly) { <option value="Current">Compte courant</option> } @if (!InvestmentsOnly) { <option value="Savings">Épargne disponible</option> } @if (!SavingsOnly) { <option value="Investment">Placement à long terme</option> }</select></label>
+            <label>Type<select name="kind">@if (!SavingsOnly && !InvestmentsOnly) { <option value="Current">Compte courant</option> } @if (!InvestmentsOnly) { <option value="Savings">Épargne disponible</option> } @if (!SavingsOnly) { <option value="Investment">Placement à long terme</option><option value="Crypto">Crypto</option> }</select></label>
             <label>Produit ou support (facultatif)<input name="product" list="products" maxlength="60" placeholder="Livret A, LDDS, PEL, assurance-vie…" /><datalist id="products"><option>Livret A</option><option>LDDS</option><option>LEP</option><option>Livret jeune</option><option>PEL</option><option>CEL</option><option>Livret bancaire</option><option>Assurance-vie</option><option>PEA</option><option>Compte-titres</option><option>PER</option></datalist><small>Le libellé décrit votre suivi ; les règles de détention et les intérêts ne sont pas calculés automatiquement.</small></label>
             <label>Solde de départ (€)<input name="opening" type="number" step="0.01" min="-100000000" max="100000000" value="0" required /></label>
             <label>Date du solde de départ<input name="date" type="date" value="@Iso(Today)" min="1900-01-01" max="@Iso(Today)" required /></label>

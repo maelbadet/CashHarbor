@@ -63,6 +63,15 @@ internal static class RecurrenceRegression
             var edited = (await finance.ReadAsync(actor)).Recurrences.Single(x => x.Id == monthEnd.Id);
             Check(edited.DayOfMonth == 31 && edited.Following(edited.NextDate) == new DateOnly(2026, 12, 31), "Amount-only edit changed a monthly end-of-month anchor.");
         });
+        await test("Schema v6 upgrade protects recurring transfers and crypto account classification", async () =>
+        {
+            await using var db=await factory.CreateDbContextAsync();var payload=(await db.Vaults.SingleAsync()).Payload;
+            await db.Database.ExecuteSqlRawAsync("PRAGMA user_version = 6");await DatabaseSchema.InitializeAsync(db,clock);
+            var directory=Path.Combine(Path.GetDirectoryName(db.Database.GetDbConnection().DataSource)!,"backups");
+            var path=Directory.GetFiles(directory,"before-recurring-transfers-v7-*.db").Single();
+            await using var backup=new VaultDb(new DbContextOptionsBuilder<VaultDb>().UseSqlite($"Data Source={path}").Options);
+            Check((await backup.Vaults.SingleAsync()).Payload==payload&&(await db.Vaults.SingleAsync()).Payload==payload,"Recurring transfer upgrade changed existing data.");
+        });
         await test("Schema v5 upgrade backs up before monthly safety-reserve settings", async () =>
         {
             await using var db=await factory.CreateDbContextAsync();var payload=(await db.Vaults.SingleAsync()).Payload;

@@ -40,6 +40,23 @@ internal static class SpaceRegression
         await finance.RenameAccountAsync(actor,personalId,"Renamed account","Bank");
         Check((await finance.ReadAsync(actor)).Accounts.Single(a=>a.Id==personalId).Product=="LEP","Legacy account rename dropped savings product.");
         Check(SafetyReserve.Calculate(await finance.ReadAsync(actor),false).TargetCents==480000&&SafetyReserve.Calculate(await finance.ReadAsync(partner),true).TargetCents==960000,"Saved safety policy not shared or incorrectly scaled.");
+        var before=w.Accounts.Sum(a=>w.Balance(a.Id));
+        await finance.AddRecurringTransferAsync(actor,personalId,jointId,"Common contribution",50,today,RecurrenceFrequency.Monthly);
+        var programmed=(await finance.ReadAsync(actor)).Recurrences.Single(r=>r.Label=="Common contribution");
+        Check(!(await finance.ReadAsync(partner)).Recurrences.Any(r=>r.Id==programmed.Id),"Private transfer schedule exposed to partner.");
+        await finance.BookDueAsync(actor,AccountVisibility.Personal);await finance.BookDueAsync(actor,AccountVisibility.Personal);
+        var legs=w.Transactions.Where(t=>t.RecurrenceId==programmed.Id).ToArray();
+        Check(legs.Length==2&&legs.All(t=>t.Kind==EntryKind.Transfer)&&legs.Sum(t=>t.Cents)==0&&legs[0].TransferId==legs[1].TransferId,"Scheduled transfer duplicated or created an expense.");
+        Check(w.Accounts.Sum(a=>w.Balance(a.Id))==before,"Scheduled transfer changed total balances.");
+        await finance.AddRecurringTransferAsync(actor,jointId,personalId,"Private return schedule",5,today,RecurrenceFrequency.Monthly);
+        var hidden=(await finance.ReadAsync(actor)).Recurrences.Single(r=>r.Label=="Private return schedule");
+        await finance.BookDueAsync(partner,AccountVisibility.Joint);
+        Check(w.Recurrences.Any(r=>r.Id==hidden.Id)&&!w.Transactions.Any(t=>t.RecurrenceId==hidden.Id),"Partner deleted or booked hidden common-to-private schedule.");
+        await finance.BookDueAsync(actor,AccountVisibility.Joint);
+        Check(w.Transactions.Count(t=>t.RecurrenceId==hidden.Id)==2,"Owner could not book common-to-private schedule.");
+        try{await finance.AddRecurringTransferAsync(actor,personalId,personalId,"Invalid",10,today,RecurrenceFrequency.Monthly);throw new Exception("Self transfer accepted.");}catch(RuleException){}
+        await finance.RenameAccountAsync(actor,personalId,"Crypto account","Bank",kind:AccountKind.Crypto);
+        Check((await finance.ReadAsync(actor)).Accounts.Single(a=>a.Id==personalId).Kind==AccountKind.Crypto,"Crypto classification not saved.");
     }
     private sealed class MemoryStore(Workspace full) : IWorkspaceStore
     {

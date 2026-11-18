@@ -18,7 +18,7 @@ function createModal(content, title, trigger) {
   for(const node of [content,...content.querySelectorAll('[id]')])if(node.id)modalTargets.set(node.id,open);
   return {dialog, open};
 }
-const creationActions = new Set(['/actions/account-add','/actions/transaction-add','/actions/goal-save','/actions/recurrence-add','/actions/loan-save','/portfolio/add','/budget/save']);
+const creationActions = new Set(['/actions/account-add','/actions/transaction-add','/actions/goal-save','/actions/recurrence-add','/actions/loan-save','/portfolio/add','/budget/save','/actions/scheduled-transfer']);
 const processed = new Set();
 for(const form of [...document.querySelectorAll('form[method="post"]')]){
   const action = new URL(form.action).pathname;

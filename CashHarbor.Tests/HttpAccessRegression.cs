@@ -62,6 +62,12 @@ internal static class HttpAccessRegression
         Check(!(await first.GetStringAsync("/export/json")).Contains("B_PRIVATE"), "New partner account leaked after joint update.");
         await CheckLoansAsync(first, second, token, firstActor, secondActor);
         await CheckAnnualRecurrencesAsync(first, second, token, firstActor, sharedAccount);
+        var scheduleToken=Token(await first.GetStringAsync("/echeances?espace=personnel"));
+        response=await first.PostAsync("/actions/scheduled-transfer",Form(new(){["__RequestVerificationToken"]=scheduleToken,["espace"]="personnel",["account"]=firstAccount.ToString(),["destination"]=sharedAccount.ToString(),["label"]="PRIVATE_MONTHLY_TRANSFER",["amount"]="600",["next"]=DateTime.Today.AddMonths(1).ToString("yyyy-MM-dd"),["frequency"]="Monthly"}));
+        Check(response.Headers.Location?.OriginalString.StartsWith("/echeances?succes=1")==true,"Scheduled transfer form did not return to recurrences.");
+        var scheduleState=JsonSerializer.Deserialize<Workspace>(await first.GetStringAsync("/export/json?espace=personnel"))!;
+        Check(scheduleState.Recurrences.Single(r=>r.Label=="PRIVATE_MONTHLY_TRANSFER").TargetAccountId==sharedAccount,"Scheduled transfer destination not persisted.");
+        Check(!(await second.GetStringAsync("/echeances?espace=couple")).Contains("PRIVATE_MONTHLY_TRANSFER"),"Partner sees private transfer schedule.");
         response=await second.PostAsync("/actions/goal-save",Form(new(){["__RequestVerificationToken"]=token,["espace"]="couple",["visibility"]="Joint",["name"]="Linked common saving goal",["target"]="6000",["saved"]="0",["account"]=sharedAccount.ToString(),["deadline"]=DateTime.Today.AddYears(1).ToString("yyyy-MM-dd")}));
         Check(response.Headers.Location?.OriginalString.Contains("succes=1")==true,"Account-linked goal form failed.");
         var goalsState=JsonSerializer.Deserialize<Workspace>(await first.GetStringAsync("/export/json?espace=couple"))!;

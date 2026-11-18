@@ -18,5 +18,5 @@ public abstract class FinancePage : ComponentBase
     public static string Euro(long cents) => (cents / 100m).ToString("N2", CultureInfo.GetCultureInfo("fr-FR")) + " €";
     public static string Amount(long cents) => (cents / 100m).ToString("0.00", CultureInfo.InvariantCulture);
     public static string Iso(DateOnly date) => date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-    public static string Kind(AccountKind kind) => kind switch { AccountKind.Current => "Compte courant", AccountKind.Savings => "Épargne", _ => "Investissement" };
+    public static string Kind(AccountKind kind) => kind switch { AccountKind.Current => "Compte courant", AccountKind.Savings => "Épargne", AccountKind.Crypto => "Crypto", _ => "Placement / actions" };
 }

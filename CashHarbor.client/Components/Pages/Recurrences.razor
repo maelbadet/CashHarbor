@@ -15,15 +15,21 @@
     <section class="panel"><div class="table-scroll"><table><thead><tr><th>Prochaine date</th><th>Libellé</th><th>Compte</th><th>Fréquence</th><th>Montant par échéance</th><th>Action</th></tr></thead><tbody>
     @foreach (var r in W.Recurrences.OrderBy(r => r.NextDate))
     {
-        <tr><td class="nowrap">@r.NextDate.ToString("dd/MM/yyyy")</td><td><strong>@r.Label</strong><small>@r.Category @(r.Essential ? "· Essentiel" : "")</small></td><td>@W.Accounts.Single(a => a.Id == r.AccountId).Name</td><td><span class="tag">@(r.Frequency == RecurrenceFrequency.Yearly ? "Annuelle" : "Mensuelle")</span></td><td class="nowrap">@Euro(r.Cents)</td><td>
+        <tr><td class="nowrap">@r.NextDate.ToString("dd/MM/yyyy")</td><td><strong>@r.Label</strong><small>@r.Category @(r.Essential ? "· Essentiel" : "")</small></td><td>@W.Accounts.Single(a => a.Id == r.AccountId).Name @if(r.TargetAccountId is {} destination){<span> → @TransferAccounts.Single(a=>a.Id==destination).Name</span>}</td><td><span class="tag">@(r.Frequency == RecurrenceFrequency.Yearly ? "Annuelle" : "Mensuelle")</span></td><td class="nowrap">@Euro(r.Cents)</td><td>
             <details><summary>Modifier</summary><p>Le compte reste identique. Les opérations déjà comptabilisées sont conservées ; seuls les prochains passages changent.</p><RecurrenceForm Value="r" Today="Today" /></details>
             <details class="danger-zone"><summary>Arrêter</summary><p>Les opérations déjà comptabilisées sont conservées.</p><form method="post" action="/actions/recurrence-delete"><AntiforgeryToken /><SpaceField /><input type="hidden" name="id" value="@r.Id" /><button class="danger small-button">Confirmer</button></form></details>
         </td></tr>
     }
     @if (W.Recurrences.Count == 0) { <tr><td colspan="6" class="empty">Aucune échéance. Ajoutez un loyer mensuel, une facture d’eau annuelle ou un salaire.</td></tr> }
     </tbody></table></div></section>
+<section class="panel form-panel"><h2>Programmer un virement entre comptes</h2><p>Exemples : 50 € vers une assurance-vie, 600 € vers le compte commun. Le mouvement sera enregistré dans CashHarbor à votre confirmation, pas envoyé à la banque.</p><form method="post" action="/actions/scheduled-transfer" class="form-grid"><AntiforgeryToken /><SpaceField /><label>Depuis<select name="account">@foreach(var a in W.Accounts){<option value="@a.Id">@a.Name</option>}</select></label><label>Vers<select name="destination" required><option value="">Choisir le compte destinataire</option>@foreach(var a in TransferAccounts){<option value="@a.Id">@a.Name · @Visibility(a.Visibility)</option>}</select><small>Vos comptes personnels et les comptes communs accessibles.</small></label><label>Libellé<input name="label" maxlength="100" required placeholder="Versement assurance-vie" /></label><label>Montant positif (€)<input name="amount" type="number" min="0.01" max="100000000" step="0.01" required /></label><label>Premier passage<input name="next" type="date" value="@Iso(Today)" min="1900-01-01" max="@Iso(Today.AddYears(5))" required /></label><label>Fréquence<select name="frequency"><option value="Monthly">Mensuelle</option><option value="Yearly">Annuelle</option></select></label><div class="form-actions"><button>Programmer ce virement</button></div></form></section>
     <section class="panel form-panel"><span class="eyebrow">ANTICIPER LES PROCHAINS PAIEMENTS</span><h2>Ajouter une récurrence</h2>
     @if (W.Accounts.Count == 0) { <p>Ajoutez d’abord <a href="@Space.Url("/comptes")">un compte</a>.</p> }
     else { <RecurrenceForm Accounts="W.Accounts" Today="Today" /> }
     </section>
+}
+
+@code {
+private IReadOnlyList<FinancialAccount> TransferAccounts=[];
+protected override async Task OnInitializedAsync(){await base.OnInitializedAsync();TransferAccounts=(await Finance.ReadAsync(Actor)).Accounts;}
 }

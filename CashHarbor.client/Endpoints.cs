@@ -113,7 +113,7 @@ public static class Endpoints
         Guid? O(string name) => string.IsNullOrEmpty(S(name)) ? null : G(name);
         decimal M(string name) => decimal.Parse(S(name), NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture);
         DateOnly D(string name) => DateOnly.ParseExact(S(name), "yyyy-MM-dd", CultureInfo.InvariantCulture);
-        var back = action.Split('-')[0] switch { "account" => "/comptes", "transaction" => "/operations", "goal" => "/objectifs", "recurrence" => "/echeances", "loan" => "/prets", _ => "/parametres" };
+        var back = action.Split('-')[0] switch { "account" => "/comptes", "transaction" => "/operations", "goal" => "/objectifs", "recurrence" => "/echeances", "scheduled" => "/echeances", "loan" => "/prets", _ => "/parametres" };
         var spaceKey = S("espace") is "personnel" or "couple" ? S("espace") : space.Key;
         var visibility = spaceKey == "couple" ? AccountVisibility.Joint : AccountVisibility.Personal;
         try
@@ -134,6 +134,7 @@ public static class Endpoints
             }
             switch (action)
             {
+                case "scheduled-transfer": await finance.AddRecurringTransferAsync(actor,G("account"),G("destination"),S("label"),M("amount"),D("next"),Enum.Parse<RecurrenceFrequency>(S("frequency")));back="/echeances";break;
                 case "smtp-save": await reminders.SaveSmtpAsync(actor, new(S("host"), int.Parse(S("port"), CultureInfo.InvariantCulture), S("username"), S("from"), Enum.Parse<SmtpEncryption>(S("encryption"))), S("smtpPassword")); break;
                 case "reminder-save": await reminders.SavePreferencesAsync(actor, S("enabled") == "on", int.Parse(S("day"), CultureInfo.InvariantCulture), int.Parse(S("hour"), CultureInfo.InvariantCulture)); break;
                 case "reminder-test": await reminders.SendTestAsync(actor); break;
@@ -146,7 +147,7 @@ public static class Endpoints
                 case "account-add": await finance.AddAccountAsync(actor, S("name"), S("institution"), Enum.Parse<AccountKind>(S("kind")), M("opening"), D("date"), Enum.Parse<AccountVisibility>(S("visibility")), S("product")); break;
                 case "account-share": await finance.ShareAccountAsync(actor, G("id"), S("confirm") == "on"); spaceKey = "couple"; break;
                 case "account-balance": await finance.RecordBalanceAsync(actor, G("id"), M("balance"), D("date")); break;
-                case "account-edit": await finance.RenameAccountAsync(actor, G("id"), S("name"), S("institution"), f.ContainsKey("product") ? S("product") : null); break;
+                case "account-edit": await finance.RenameAccountAsync(actor, G("id"), S("name"), S("institution"), f.ContainsKey("product") ? S("product") : null, string.IsNullOrEmpty(S("kind"))?null:Enum.Parse<AccountKind>(S("kind"))); break;
                 case "account-delete": await finance.DeleteAccountAsync(actor, G("id")); break;
                 case "transaction-add": await finance.AddTransactionAsync(actor, G("account"), S("label"), S("category"), M("amount"), D("date"), Enum.Parse<EntryKind>(S("kind")), O("target")); break;
                 case "transaction-delete": await finance.DeleteTransactionAsync(actor, G("id")); break;

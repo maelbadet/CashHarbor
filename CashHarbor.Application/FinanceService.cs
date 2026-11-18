@@ -47,14 +47,16 @@ public sealed class FinanceService(IWorkspaceStore store, TimeProvider clock)
         w.Snapshots.Add(new(id, value, date, prior?.AdjustmentId));
         Reconcile(w, id);
     });
-    public Task RenameAccountAsync(Guid actor, Guid id, string name, string institution, string? product = null) => store.UpdateAsync(actor, "account.updated", w =>
+    public Task RenameAccountAsync(Guid actor, Guid id, string name, string institution, string? product = null, AccountKind? kind = null) => store.UpdateAsync(actor, "account.updated", w =>
     {
-        var a = Account(w, id); w.Accounts[w.Accounts.IndexOf(a)] = a with { Name = Text(name), Institution = Text(institution), Product = product == null ? a.Product : string.IsNullOrWhiteSpace(product) ? "" : Text(product,60) };
+        if(kind!=null&&!Enum.IsDefined(kind.Value))throw new RuleException("Type de compte invalide.");
+        var a = Account(w, id); w.Accounts[w.Accounts.IndexOf(a)] = a with { Name = Text(name), Institution = Text(institution), Product = product == null ? a.Product : string.IsNullOrWhiteSpace(product) ? "" : Text(product,60), Kind=kind??a.Kind };
     });
     public Task DeleteAccountAsync(Guid actor, Guid id) => store.UpdateAsync(actor, "account.deleted", w =>
     {
         var a = Account(w, id);
         if(w.Goals.Any(g=>g.AccountId==id))throw new RuleException("Détachez d’abord ce compte des objectifs qui l’utilisent.");
+        if(w.Recurrences.Any(r=>r.TargetAccountId==id))throw new RuleException("Arrêtez d’abord les virements récurrents vers ce compte.");
         if (w.Loans.Any(l => l.PaymentAccountId == id)) throw new RuleException("Détachez d’abord ce compte des prêts qui l’utilisent.");
         if (w.Transactions.Any(t => t.AccountId == id) || w.Recurrences.Any(r => r.AccountId == id) || w.Snapshots.Any(s => s.AccountId == id)) throw new RuleException("Supprimez d’abord les opérations et échéances de ce compte. Les comptes avec relevés sont conservés.");
         w.Accounts.Remove(a);
@@ -102,6 +104,13 @@ public sealed class FinanceService(IWorkspaceStore store, TimeProvider clock)
         else { var index = w.Goals.FindIndex(g => g.Id == id); if (index < 0) throw new RuleException("Objectif introuvable."); w.Goals[index] = goal; }
     });
     public Task DeleteGoalAsync(Guid actor, Guid id) => store.UpdateAsync(actor, "goal.deleted", w => { if (w.Goals.RemoveAll(g => g.Id == id) == 0) throw new RuleException("Objectif introuvable."); });
+    public Task AddRecurringTransferAsync(Guid actor, Guid source, Guid destination, string label, decimal amount, DateOnly next, RecurrenceFrequency frequency) => store.UpdateAsync(actor,"transfer.scheduled",w=>
+    {
+        var a=Account(w,source);var b=Account(w,destination);var cents=Money(amount);
+        if(source==destination||cents<=0||next<a.OpeningDate||next<b.OpeningDate||next>Today.AddYears(5)||!Enum.IsDefined(frequency))throw new RuleException("Choisissez deux comptes distincts, un montant positif et une date valide.");
+        Limit(w.Recurrences.Count>=200);
+        w.Recurrences.Add(new(Guid.NewGuid(),source,Text(label),"Virement interne",-cents,next,next.Day,false,Frequency:frequency,MonthOfYear:next.Month,TargetAccountId:destination));
+    });
     public Task AddRecurrenceAsync(Guid actor, Guid account, string label, string category, decimal amount, DateOnly next, bool essential, RecurrenceFrequency frequency = RecurrenceFrequency.Monthly) => store.UpdateAsync(actor, "recurrence.created", w =>
     {
         var a = Account(w, account); var cents = Money(amount); Limit(w.Recurrences.Count >= 200);
@@ -114,9 +123,10 @@ public sealed class FinanceService(IWorkspaceStore store, TimeProvider clock)
         var a = Account(w, r.AccountId); var cents = Money(amount);
         if (cents == 0 || next < a.OpeningDate || next > Today.AddYears(5) || !Enum.IsDefined(frequency)) throw new RuleException("Montant non nul, fréquence et prochaine date valides requis.");
         var preserveAnchor = frequency == r.Frequency && next == r.NextDate;
-        w.Recurrences[w.Recurrences.IndexOf(r)] = r with { Label = Text(label), Category = Text(category, 60), Cents = cents, NextDate = next, DayOfMonth = preserveAnchor ? r.DayOfMonth : next.Day, MonthOfYear = preserveAnchor ? r.MonthOfYear ?? r.NextDate.Month : next.Month, Essential = essential, Frequency = frequency };
+        if(r.TargetAccountId is {} destination && (cents>=0||next<Account(w,destination).OpeningDate))throw new RuleException("Un virement programmé doit conserver un montant débité et une date valide.");
+        w.Recurrences[w.Recurrences.IndexOf(r)] = r with { Label = Text(label), Category = Text(category, 60), Cents = cents, NextDate = next, DayOfMonth = preserveAnchor ? r.DayOfMonth : next.Day, MonthOfYear = preserveAnchor ? r.MonthOfYear ?? r.NextDate.Month : next.Month, Essential = r.TargetAccountId == null && essential, Frequency = frequency };
     });
-    public static long EssentialMonthlyCents(Workspace w) => checked((long)decimal.Round(-w.Recurrences.Where(r => r.Essential && r.Cents < 0 && r.Active).Sum(r => r.MonthlyEquivalentCents), 0, MidpointRounding.AwayFromZero));
+    public static long EssentialMonthlyCents(Workspace w) => checked((long)decimal.Round(-w.Recurrences.Where(r => r.TargetAccountId==null && r.Essential && r.Cents < 0 && r.Active).Sum(r => r.MonthlyEquivalentCents), 0, MidpointRounding.AwayFromZero));
     public Task DeleteRecurrenceAsync(Guid actor, Guid id) => store.UpdateAsync(actor, "recurrence.deleted", w => { if (w.Recurrences.RemoveAll(r => r.Id == id) == 0) throw new RuleException("Échéance introuvable."); });
     // Explicit confirmation only: no background duplication or external bank instruction.
     public Task BookDueAsync(Guid actor, AccountVisibility? visibility = null) => store.UpdateAsync(actor, "recurrence.booked", w =>
@@ -130,13 +140,15 @@ public sealed class FinanceService(IWorkspaceStore store, TimeProvider clock)
             {
                 if (++count > 120) throw new RuleException("Plus de 120 échéances à rattraper : corrigez la prochaine date de la récurrence.");
                 Limit(w.Transactions.Count >= 100000);
-                if (!w.Transactions.Any(t => t.RecurrenceId == r.Id && t.Date == next))
-                    w.Transactions.Add(new(Guid.NewGuid(), r.AccountId, r.Label, r.Category, r.Cents, next, r.Cents < 0 ? EntryKind.Expense : EntryKind.Income, RecurrenceId: r.Id));
+                if (!w.Transactions.Any(t => t.RecurrenceId == r.Id && t.Date == next)) {
+                    if(r.TargetAccountId is {} destination){Account(w,destination);Limit(w.Transactions.Count>=99999);var transfer=Guid.NewGuid();w.Transactions.Add(new(Guid.NewGuid(),r.AccountId,r.Label,r.Category,r.Cents,next,EntryKind.Transfer,TransferId:transfer,RecurrenceId:r.Id));w.Transactions.Add(new(Guid.NewGuid(),destination,r.Label,r.Category,-r.Cents,next,EntryKind.Transfer,TransferId:transfer,RecurrenceId:r.Id));selectedAccounts.Add(destination);}
+                    else w.Transactions.Add(new(Guid.NewGuid(), r.AccountId, r.Label, r.Category, r.Cents, next, r.Cents < 0 ? EntryKind.Expense : EntryKind.Income, RecurrenceId: r.Id));
+                }
                 next = r.Following(next);
             }
             w.Recurrences[w.Recurrences.IndexOf(r)] = r with { NextDate = next };
         }
-        foreach (var id in w.Recurrences.Select(r => r.AccountId).Distinct().Where(selectedAccounts.Contains)) Reconcile(w, id);
+        foreach (var id in selectedAccounts) Reconcile(w, id);
     });
     // Preserve observed balances even when a missing older entry is entered later.
     internal static void Reconcile(Workspace w, Guid account)
