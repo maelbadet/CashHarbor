@@ -77,6 +77,18 @@ await Test("Only two provisioned users; reset revokes sessions", async () =>
     Check(!await identity.IsValidAsync(actor, old!.Version), "Reset did not revoke sessions.");
 });
 var today = finance.Today;
+await Test("Safety reserve: shared costs split equally, monthly margin and savings-only balances", () =>
+{
+    var own=Guid.NewGuid();var common=Guid.NewGuid();var w=new Workspace { EmergencyPolicy=new(3,50000,10000,100000,8),Accounts=[new(own,"LEP","Bank",AccountKind.Savings,105000,today,AccountVisibility.Personal,actor),new(common,"Common saving","Bank",AccountKind.Savings,200000,today,AccountVisibility.Joint),new(Guid.NewGuid(),"Current","Bank",AccountKind.Current,900000,today,AccountVisibility.Personal,actor),new(Guid.NewGuid(),"Investment","Bank",AccountKind.Investment,900000,today,AccountVisibility.Personal,actor)]};
+    var personal=SafetyReserve.Calculate(w,false);var joint=SafetyReserve.Calculate(w,true);
+    Check(personal.TargetCents==480000&&joint.TargetCents==960000,"1000 common + 100 each over 8 months incorrect.");
+    Check(personal.SavedCents==105000&&personal.MissingCents==375000&&joint.SavedCents==200000,"Current or investment account counted as safety savings.");
+    w.EmergencyPolicy=new();w.Recurrences.Add(new(Guid.NewGuid(),common,"Household","Logement",-100000,today,1,true));
+    Check(SafetyReserve.Calculate(w,false).TargetCents==480000,"Automatic common recurring expense basis incorrect.");
+    w.Recurrences.Add(new(Guid.NewGuid(),own,"Personal tech","Abonnements",-99999,today,1,true));
+    Check(SafetyReserve.Calculate(w,true).TargetCents==960000,"Private spending polluted common reserve.");
+    return Task.CompletedTask;
+});
 await Test("Market history: currency, ETF type isolation, UTC dates, caching and provider failure", MarketHistoryRegression.Run);
 await Test("Portfolio privacy, encrypted storage and constant-capital simulation", async () =>
 {

@@ -54,6 +54,7 @@ public sealed class FinanceService(IWorkspaceStore store, TimeProvider clock)
     public Task DeleteAccountAsync(Guid actor, Guid id) => store.UpdateAsync(actor, "account.deleted", w =>
     {
         var a = Account(w, id);
+        if(w.Goals.Any(g=>g.AccountId==id))throw new RuleException("Détachez d’abord ce compte des objectifs qui l’utilisent.");
         if (w.Loans.Any(l => l.PaymentAccountId == id)) throw new RuleException("Détachez d’abord ce compte des prêts qui l’utilisent.");
         if (w.Transactions.Any(t => t.AccountId == id) || w.Recurrences.Any(r => r.AccountId == id) || w.Snapshots.Any(s => s.AccountId == id)) throw new RuleException("Supprimez d’abord les opérations et échéances de ce compte. Les comptes avec relevés sont conservés.");
         w.Accounts.Remove(a);
@@ -87,14 +88,16 @@ public sealed class FinanceService(IWorkspaceStore store, TimeProvider clock)
         w.Transactions.RemoveAll(x => x.Id == id || (t.TransferId != null && x.TransferId == t.TransferId));
         foreach (var accountId in touched) Reconcile(w, accountId);
     });
-    public Task SaveGoalAsync(Guid actor, Guid? id, string name, decimal target, decimal saved, DateOnly? deadline, AccountVisibility visibility = AccountVisibility.Personal) => store.UpdateAsync(actor, "goal.saved", w =>
+    public Task SaveGoalAsync(Guid actor, Guid? id, string name, decimal target, decimal saved, DateOnly? deadline, AccountVisibility visibility = AccountVisibility.Personal, Guid? accountId = null) => store.UpdateAsync(actor, "goal.saved", w =>
     {
-        var t = Money(target); var s = Money(saved);
+        var t = Money(target); var s = accountId == null ? Money(saved) : 0;
         if (t <= 0 || s < 0 || s > t || (deadline != null && deadline < new DateOnly(1900, 1, 1))) throw new RuleException("Objectif invalide : la somme mise de côté doit être comprise entre zéro et la cible.");
         var existing = id == null ? null : w.Goals.SingleOrDefault(g => g.Id == id) ?? throw new RuleException("Objectif introuvable.");
         if (visibility is not (AccountVisibility.Personal or AccountVisibility.Joint)) throw new RuleException("Visibilité invalide.");
         // Editing preserves access; sharing a personal goal requires creating a separate common goal.
-        var goal = new FinancialGoal(id ?? Guid.NewGuid(), Text(name), t, s, deadline, existing?.Visibility ?? visibility, existing == null ? visibility == AccountVisibility.Personal ? actor : null : existing.OwnerId);
+        var effectiveVisibility=existing?.Visibility??visibility;var owner=existing?.OwnerId??(effectiveVisibility==AccountVisibility.Personal?actor:(Guid?)null);
+        if(accountId is {} linked){var account=Account(w,linked);if(account.Visibility!=effectiveVisibility||account.OwnerId!=owner)throw new RuleException("Choisissez un compte du même espace et du même titulaire que l’objectif.");}
+        var goal = new FinancialGoal(id ?? Guid.NewGuid(), Text(name), t, s, deadline, effectiveVisibility, owner, accountId);
         if (id == null) { Limit(w.Goals.Count >= 100); w.Goals.Add(goal); }
         else { var index = w.Goals.FindIndex(g => g.Id == id); if (index < 0) throw new RuleException("Objectif introuvable."); w.Goals[index] = goal; }
     });
@@ -152,10 +155,10 @@ public sealed class FinanceService(IWorkspaceStore store, TimeProvider clock)
             w.Snapshots[w.Snapshots.IndexOf(snapshot)] = snapshot with { AdjustmentId = id };
         }
     }
-    public Task SavePolicyAsync(Guid actor, string name, int months, decimal buffer) => store.UpdateAsync(actor, "workspace.updated", w =>
+    public Task SavePolicyAsync(Guid actor, string name, int months, decimal buffer, decimal? sharedMonthly = null) => store.UpdateAsync(actor, "workspace.updated", w =>
     {
-        if (months is < 1 or > 24 || buffer < 0) throw new RuleException("Choisissez entre 1 et 24 mois et une réserve positive.");
-        w.Name = Text(name); w.EmergencyPolicy = new(months, Money(buffer));
+        if (months is < 1 or > 24 || buffer < 0 || sharedMonthly < 0) throw new RuleException("Choisissez entre 1 et 24 mois et des montants positifs.");
+        w.Name = Text(name); w.EmergencyPolicy = new(months, Money(buffer), Money(buffer), sharedMonthly == null ? null : Money(sharedMonthly.Value), months);
     });
     public static string ExportCsv(Workspace w)
     {

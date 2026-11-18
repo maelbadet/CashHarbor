@@ -67,6 +67,7 @@ public static class WorkspaceAccess
         {
             var previous = full.Goals.SingleOrDefault(x => x.Id == g.Id);
             ValidateAccess(g.Visibility, g.OwnerId, previous?.Visibility, previous?.OwnerId, actor);
+            if(g.AccountId is {} linked){var account=changed.Accounts.SingleOrDefault(a=>a.Id==linked);if(account==null||account.Visibility!=g.Visibility||account.OwnerId!=g.OwnerId)throw new RuleException("L’objectif et son compte doivent appartenir au même espace et au même titulaire.");}
             if (previous != null && !goalIds.Contains(g.Id)) throw new RuleException("Objectif introuvable.");
         }
         var changedAccountIds = changed.Accounts.Select(a => a.Id).ToHashSet();

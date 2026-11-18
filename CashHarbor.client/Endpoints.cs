@@ -150,13 +150,13 @@ public static class Endpoints
                 case "account-delete": await finance.DeleteAccountAsync(actor, G("id")); break;
                 case "transaction-add": await finance.AddTransactionAsync(actor, G("account"), S("label"), S("category"), M("amount"), D("date"), Enum.Parse<EntryKind>(S("kind")), O("target")); break;
                 case "transaction-delete": await finance.DeleteTransactionAsync(actor, G("id")); break;
-                case "goal-save": await finance.SaveGoalAsync(actor, O("id"), S("name"), M("target"), M("saved"), string.IsNullOrEmpty(S("deadline")) ? null : D("deadline"), string.IsNullOrEmpty(S("visibility")) ? AccountVisibility.Personal : Enum.Parse<AccountVisibility>(S("visibility"))); break;
+                case "goal-save": await finance.SaveGoalAsync(actor, O("id"), S("name"), M("target"), M("saved"), string.IsNullOrEmpty(S("deadline")) ? null : D("deadline"), string.IsNullOrEmpty(S("visibility")) ? AccountVisibility.Personal : Enum.Parse<AccountVisibility>(S("visibility")), O("account")); break;
                 case "goal-delete": await finance.DeleteGoalAsync(actor, G("id")); break;
                 case "recurrence-add": await finance.AddRecurrenceAsync(actor, G("account"), S("label"), S("category"), M("amount"), D("next"), S("essential") == "on", string.IsNullOrEmpty(S("frequency")) ? RecurrenceFrequency.Monthly : Enum.Parse<RecurrenceFrequency>(S("frequency"))); break;
                 case "recurrence-edit": await finance.UpdateRecurrenceAsync(actor, G("id"), S("label"), S("category"), M("amount"), D("next"), S("essential") == "on", Enum.Parse<RecurrenceFrequency>(S("frequency"))); break;
                 case "recurrence-delete": await finance.DeleteRecurrenceAsync(actor, G("id")); break;
                 case "recurrence-book": await finance.BookDueAsync(actor, visibility); break;
-                case "settings-save": await finance.SavePolicyAsync(actor, S("name"), int.Parse(S("months"), CultureInfo.InvariantCulture), M("buffer")); break;
+                case "settings-save": await finance.SavePolicyAsync(actor, S("name"), int.Parse(S("months"), CultureInfo.InvariantCulture), M("buffer"), string.IsNullOrWhiteSpace(S("sharedMonthly")) ? null : M("sharedMonthly")); break;
                 case "password-change": await identity.ChangePasswordAsync(actor, S("current"), S("password"), S("code")); await http.SignOutAsync(); return Results.LocalRedirect("/connexion?modifie=1");
                 default: return Results.NotFound();
             }

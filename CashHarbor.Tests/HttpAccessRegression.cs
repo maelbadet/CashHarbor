@@ -62,6 +62,12 @@ internal static class HttpAccessRegression
         Check(!(await first.GetStringAsync("/export/json")).Contains("B_PRIVATE"), "New partner account leaked after joint update.");
         await CheckLoansAsync(first, second, token, firstActor, secondActor);
         await CheckAnnualRecurrencesAsync(first, second, token, firstActor, sharedAccount);
+        response=await second.PostAsync("/actions/goal-save",Form(new(){["__RequestVerificationToken"]=token,["espace"]="couple",["visibility"]="Joint",["name"]="Linked common saving goal",["target"]="6000",["saved"]="0",["account"]=sharedAccount.ToString(),["deadline"]=DateTime.Today.AddYears(1).ToString("yyyy-MM-dd")}));
+        Check(response.Headers.Location?.OriginalString.Contains("succes=1")==true,"Account-linked goal form failed.");
+        var goalsState=JsonSerializer.Deserialize<Workspace>(await first.GetStringAsync("/export/json?espace=couple"))!;
+        Check(goalsState.Goals.Single(g=>g.Name=="Linked common saving goal").AccountId==sharedAccount,"Goal account not persisted or visible to partner.");
+        response=await second.PostAsync("/actions/goal-save",Form(new(){["__RequestVerificationToken"]=token,["espace"]="couple",["visibility"]="Joint",["name"]="Forged goal",["target"]="6000",["saved"]="0",["account"]=firstAccount.ToString()}));
+        Check(response.Headers.Location?.OriginalString.Contains("erreur=")==true,"Shared goal accepted private account ID.");
         response = await second.PostAsync("/budget/save", Form(new() { ["espace"] = "couple" }));
         Check(response.StatusCode == HttpStatusCode.BadRequest, "Budget update accepted without CSRF.");
         var budgetMonth = DateTime.Today.ToString("yyyy-MM");

@@ -25,6 +25,18 @@ internal static class SpaceRegression
         var coupleReport = FinancialAnalytics.Build(WorkspaceSpaces.Select(authorized, AccountVisibility.Joint), new(today, today), today);
         Check(soloReport.ExpenseCents == 1500 && coupleReport.ExpenseCents == 5000, "VPS cost polluted couple chart.");
         Check(!FinanceService.ExportCsv(WorkspaceSpaces.Select(authorized, AccountVisibility.Joint)).Contains("VPS"), "Personal transaction leaked into couple CSV.");
+        await finance.SaveGoalAsync(actor,null,"Linked goal",6000,0,today.AddMonths(12),AccountVisibility.Personal,personalId);
+        var linked=(await finance.ReadAsync(actor)).Goals.Single(g=>g.Name=="Linked goal");
+        Check(GoalPlanning.Current(await finance.ReadAsync(actor),linked)==8500,"Linked goal ignored account balance.");
+        await finance.AddTransactionAsync(actor,personalId,"Deposit","Salaire",15,today,EntryKind.Income);
+        Check(GoalPlanning.Current(await finance.ReadAsync(actor),linked)==10000,"Goal did not follow new account transaction.");
+        Check(!(await finance.ReadAsync(partner)).Goals.Any(g=>g.Id==linked.Id),"Linked private goal exposed to partner.");
+        try{await finance.SaveGoalAsync(actor,null,"Bad shared goal",6000,0,today.AddMonths(12),AccountVisibility.Joint,personalId);throw new Exception("Shared goal linked to private account.");}catch(RuleException){}
+        try{await finance.DeleteAccountAsync(actor,personalId);throw new Exception("Linked account deletion accepted.");}catch(RuleException){}
+        Check(GoalPlanning.Months(new(2026,11,18),new(2027,11,18))==12 && GoalPlanning.Monthly(105000,600000,12)==41250,"1050 to 6000 goal calculation incorrect.");
+        Check(GoalPlanning.Monthly(700000,600000,12)==0,"Reached goal still requires contributions.");
+        await finance.SavePolicyAsync(actor,"Home",8,100,1000);
+        Check(SafetyReserve.Calculate(await finance.ReadAsync(actor),false).TargetCents==480000&&SafetyReserve.Calculate(await finance.ReadAsync(partner),true).TargetCents==960000,"Saved safety policy not shared or incorrectly scaled.");
     }
     private sealed class MemoryStore(Workspace full) : IWorkspaceStore
     {

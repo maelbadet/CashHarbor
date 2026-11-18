@@ -63,12 +63,32 @@ internal static class RecurrenceRegression
             var edited = (await finance.ReadAsync(actor)).Recurrences.Single(x => x.Id == monthEnd.Id);
             Check(edited.DayOfMonth == 31 && edited.Following(edited.NextDate) == new DateOnly(2026, 12, 31), "Amount-only edit changed a monthly end-of-month anchor.");
         });
+        await test("Schema v5 upgrade backs up before monthly safety-reserve settings", async () =>
+        {
+            await using var db=await factory.CreateDbContextAsync();var payload=(await db.Vaults.SingleAsync()).Payload;
+            await db.Database.ExecuteSqlRawAsync("PRAGMA user_version = 5");await DatabaseSchema.InitializeAsync(db,clock);
+            var directory=Path.Combine(Path.GetDirectoryName(db.Database.GetDbConnection().DataSource)!,"backups");
+            var path=Directory.GetFiles(directory,"before-safety-reserve-v6-*.db").Single();
+            await using var backup=new VaultDb(new DbContextOptionsBuilder<VaultDb>().UseSqlite($"Data Source={path}").Options);
+            Check((await backup.Vaults.SingleAsync()).Payload==payload&&(await db.Vaults.SingleAsync()).Payload==payload,"Safety upgrade modified vault contents.");
+        });
+        await test("Schema v4 upgrade preserves data and backs up before account-linked goals", async () =>
+        {
+            await using var db = await factory.CreateDbContextAsync(); var payload=(await db.Vaults.SingleAsync()).Payload;
+            await db.Database.ExecuteSqlRawAsync("PRAGMA user_version = 4"); await DatabaseSchema.InitializeAsync(db,clock);
+            using var read=db.Database.GetDbConnection().CreateCommand();read.CommandText="PRAGMA user_version";
+            Check(Convert.ToInt32(await read.ExecuteScalarAsync())==DatabaseSchema.CurrentVersion,"Linked goal downgrade protection missing.");
+            var directory=Path.Combine(Path.GetDirectoryName(db.Database.GetDbConnection().DataSource)!,"backups");
+            var path=Directory.GetFiles(directory,"before-linked-goals-v5-*.db").Single();
+            await using var backup=new VaultDb(new DbContextOptionsBuilder<VaultDb>().UseSqlite($"Data Source={path}").Options);
+            Check((await backup.Vaults.SingleAsync()).Payload==payload&&(await db.Vaults.SingleAsync()).Payload==payload,"Goal upgrade lost vault data.");
+        });
         await test("Schema v3 upgrade backs up encrypted data and marks annual recurrence compatibility", async () =>
         {
             await using var db = await factory.CreateDbContextAsync(); var payload = (await db.Vaults.SingleAsync()).Payload;
             await db.Database.ExecuteSqlRawAsync("PRAGMA user_version = 3"); await DatabaseSchema.InitializeAsync(db, clock);
             using var read = db.Database.GetDbConnection().CreateCommand(); read.CommandText = "PRAGMA user_version";
-            Check(Convert.ToInt32(await read.ExecuteScalarAsync()) == 4, "Old monthly-only image can still reopen annual recurrences.");
+            Check(Convert.ToInt32(await read.ExecuteScalarAsync()) == DatabaseSchema.CurrentVersion, "Old monthly-only image can still reopen annual recurrences.");
             var directory = Path.Combine(Path.GetDirectoryName(db.Database.GetDbConnection().DataSource)!, "backups");
             var backup = Directory.GetFiles(directory, "before-annual-recurrences-v4-*.db").Single();
             await using var snapshot = new VaultDb(new DbContextOptionsBuilder<VaultDb>().UseSqlite($"Data Source={backup}").Options);
