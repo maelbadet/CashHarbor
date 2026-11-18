@@ -53,7 +53,7 @@ protected override async Task OnInitializedAsync(){
  if(FromDate.Year<1900||ToDate>Today||FromDate>=ToDate||ToDate.DayNumber-FromDate.DayNumber>3660){Messages.Add("Choisissez une période passée ou courante de dix ans maximum.");return;}
  var symbols=new[]{One,Two,Three}.Where(s=>!string.IsNullOrWhiteSpace(s)).Select(s=>s!.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();if(symbols.Length==0){Messages.Add("Sélectionnez jusqu’à trois titres de ce type pour tracer leurs courbes.");return;}
  var histories=await Task.WhenAll(symbols.Select(s=>History.ReadAsync(MarketKind,s,FromDate,ToDate)));
- for(var i=0;i<symbols.Length;i++){var h=histories[i];if(h==null||h.Prices.Count<2)Messages.Add(symbols[i]+" : historique indisponible ou insuffisant. Vérifiez le type de titre, le symbole, la clé API, le quota et les limites de période.");else Histories.Add(h);}
+ for(var i=0;i<symbols.Length;i++){var h=histories[i];if(h==null||h.Prices.Count<2)Messages.Add(symbols[i]+" : "+(History.GetError(MarketKind,symbols[i],FromDate,ToDate)??"Moins de deux observations sur cette période. Essayez une période plus longue ; les cours actions/ETF sont mensuels."));else Histories.Add(h);}
  if(Histories.Count==0)return;
  if(Mode=="price"&&Histories.Select(h=>h.Currency).Distinct().Count()>1){Messages.Add("Ces titres sont cotés dans des devises différentes. Choisissez la base 100 pour les comparer sans conversion implicite.");return;}
  Dates=Histories.Select(h=>h.Prices.Select(p=>p.Date).ToHashSet()).Aggregate((a,b)=>{a.IntersectWith(b);return a;}).Order().ToArray();if(Dates.Length<2){Messages.Add("Pas assez de dates communes : essayez une autre période ou moins de titres.");return;}

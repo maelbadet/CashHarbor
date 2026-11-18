@@ -34,6 +34,8 @@ public sealed class InstrumentSearch(HttpClient http, IConfiguration configurati
             }
         }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException or JsonException or KeyNotFoundException or InvalidOperationException) { }
-        var array = results.Where(i => !string.IsNullOrWhiteSpace(i.Name) && i.Name.Length <= 250 && System.Text.RegularExpressions.Regex.IsMatch(i.Id, "^[a-zA-Z0-9.^_-]{1,50}$")).DistinctBy(i => i.Id).Take(15).ToArray(); cache.Set(key, array, TimeSpan.FromMinutes(array.Length > 0 ? 360 : 2)); return array;
+        var array = results.Where(i => !string.IsNullOrWhiteSpace(i.Name) && i.Name.Length <= 250 && System.Text.RegularExpressions.Regex.IsMatch(i.Id, "^[a-zA-Z0-9.^_-]{1,50}$")).DistinctBy(i => i.Id).Take(15).ToArray();
+        foreach (var instrument in array) cache.Set("instrument:"+kind+":"+instrument.Id.ToUpperInvariant(), instrument, TimeSpan.FromHours(6));
+        cache.Set(key, array, TimeSpan.FromMinutes(array.Length > 0 ? 360 : 2)); return array;
     }
 }
